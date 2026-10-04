@@ -14,22 +14,30 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ```
 src/
-  app/            routes, layouts, loading / error / not-found boundaries, global CSS
+  app/            routes, root layout, loading / error / not-found boundaries, global CSS
   components/
-    ui/           reusable primitives (Button, Badge, Card, Container) — no app knowledge
-    layout/       app chrome (SiteHeader, SiteFooter) composed by the root layout
+    ui/           design-system primitives (Button, Badge, Card, Container, Kbd)
+    workspace/    the product shell — stateful, owns sidebar / mode / draft
   config/         static, typed, environment-free configuration
-  lib/            pure helpers; no React or Next.js coupling
+  lib/            pure helpers (`cn()`) and framework-light hooks
 ```
 
 ## Rules
 
 - Import across the app with the `@/*` alias; never deep relative traversal.
 - Components are React Server Components by default. Add `"use client"` only when
-  state, effects, refs or browser APIs are genuinely required.
+  state, effects, refs or browser APIs are genuinely required. Everything in
+  `components/workspace/` is a client component; `app/` and `components/ui/` are not.
+- `components/ui/` must stay free of product knowledge and must not import `app/`
+  or `components/workspace/`.
+- `config/` must not import React or Next.js. Icons belong to the component layer.
 - Style with Tailwind utilities and the semantic tokens in `src/app/globals.css`
-  (`bg-surface`, `text-ink`, `border-line`, `bg-brand`, …). Do not hardcode colours.
+  (`bg-canvas`, `text-ink`, `border-line`, `text-accent`, …). Do not hardcode colours.
+- The palette is **dark-first** and dark-only; there is no `prefers-color-scheme`
+  branch to keep in sync.
 - Use `cn()` from `@/lib/utils` for any `className` callers can extend.
+- Never simulate behaviour that does not exist yet. No mock AI replies, no fake
+  conversation data, no placeholder accounts. Unwired actions state so in the UI.
 - TypeScript is strict *and* `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` are on.
   Do not weaken them; fix the code instead.
 - Never commit secrets. `.env.local` is gitignored, `.env.example` is tracked.

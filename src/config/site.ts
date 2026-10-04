@@ -4,7 +4,7 @@
  */
 export const siteConfig = {
   name: "ORVYN",
-  description: "A production-ready Next.js foundation.",
+  description: "One intelligence. Every capability.",
   locale: "en-US",
 } as const;
 

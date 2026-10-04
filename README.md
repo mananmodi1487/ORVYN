@@ -55,21 +55,39 @@ generated route types are present on a fresh clone, where `.next/` does not exis
 
 ```
 orvyn/
-├── public/                  static assets
 ├── src/
-│   ├── app/                 routes, layouts, boundaries, global CSS
-│   │   ├── globals.css      Tailwind entry + design tokens
-│   │   ├── layout.tsx       root layout: metadata, fonts, chrome
-│   │   ├── page.tsx         the single route (/)
-│   │   ├── loading.tsx      route loading boundary
-│   │   ├── error.tsx        route error boundary (client)
-│   │   ├── not-found.tsx    404 boundary
-│   │   └── icon.svg         app icon → favicon
+│   ├── app/                    routes, root layout, boundaries, global CSS
+│   │   ├── globals.css         Tailwind entry + dark-first design tokens
+│   │   ├── layout.tsx          root layout: metadata, fonts, colour scheme
+│   │   ├── page.tsx            the single route (/) → <WorkspaceShell />
+│   │   ├── loading.tsx         route loading boundary
+│   │   ├── error.tsx           route error boundary (client)
+│   │   ├── not-found.tsx       404 boundary
+│   │   └── icon.svg            app icon → favicon
 │   ├── components/
-│   │   ├── layout/          SiteHeader, SiteFooter — app chrome
-│   │   └── ui/              Button, Badge, Card, Container — no app knowledge
-│   ├── config/              static, typed, environment-free config
-│   └── lib/                 pure helpers (`cn()`)
+│   │   ├── ui/                 design-system primitives, no product knowledge
+│   │   │   ├── button.tsx      CVA variants + sizes, forwards ref
+│   │   │   ├── badge.tsx       small status pill
+│   │   │   ├── card.tsx        bordered raised surface
+│   │   │   ├── container.tsx   max-width layout wrapper
+│   │   │   └── kbd.tsx         keyboard hint
+│   │   └── workspace/          the product shell (all client components)
+│   │       ├── workspace-shell.tsx  owns shell state, composes everything
+│   │       ├── app-sidebar.tsx      logo, new conversation, nav, account
+│   │       ├── sidebar-nav-item.tsx  nav row that collapses to an icon
+│   │       ├── top-bar.tsx          mode switcher + Mission View
+│   │       ├── mode-segmented.tsx   Auto / Fast / Compare / Private
+│   │       ├── composer-mode-menu.tsx  accessible dropdown
+│   │       ├── message-composer.tsx    auto-growing composer
+│   │       ├── welcome-panel.tsx      greeting + tagline + suggestions
+│   │       ├── suggestion-card.tsx     single suggestion
+│   │       └── icons.tsx              hand-rolled SVG set (no icon dependency)
+│   ├── config/                 static, typed, environment-free configuration
+│   │   ├── site.ts             brand name, description, locale
+│   │   └── workspace.ts        modes, suggestions, nav labels, copy
+│   └── lib/
+│       ├── utils.ts            cn()
+│       └── hooks/              useMediaQuery, useIsClient
 ├── .editorconfig            shared formatting rules
 ├── .env.example             tracked template; real secrets live in .env.local
 ├── .gitattributes           LF normalisation, binary asset guards
@@ -83,9 +101,45 @@ orvyn/
 ### Layering rules
 
 1. `app/` may import from `components/`, `config/` and `lib/`.
-2. `components/ui/` must not import from `app/`, `components/layout/` or `config/site`.
-3. `lib/` and `config/` must not import React or Next.js.
-4. Cross-module imports use the `@/*` alias, never deep relative traversal.
+2. `components/ui/` must not import from `app/`, `components/workspace/` or `config/`.
+3. `config/` must not import React or Next.js — icons live in the component layer, not in config.
+4. `lib/utils.ts` must not import React; `lib/hooks/` may.
+5. Cross-module imports use the `@/*` alias, never deep relative traversal.
+
+## The workspace shell
+
+`src/app/page.tsx` renders a single `<WorkspaceShell />`. The shell is the only stateful
+boundary; it owns four pieces of state and passes them down as typed props.
+
+| State              | Type              | Affects                                        |
+| ------------------ | ----------------- | ---------------------------------------------- |
+| `sidebarCollapsed` | `boolean`         | desktop rail width, `lg:` label visibility     |
+| `drawerOpen`       | `boolean`         | mobile off-canvas drawer + overlay             |
+| `mode`             | `ResponseMode`    | top-bar segmented control and composer menu    |
+| `draft`            | `string`          | composer textarea                              |
+
+### Implemented interactions
+
+- **Sidebar collapse** (desktop, `lg:` and up) — rail narrows to 68px, labels and titles are
+  removed from the layout, and the toggle reports `aria-expanded`.
+- **Mobile drawer** — off-canvas below `lg`, opened from the top-bar menu button, closed by the
+  close button, the overlay, or <kbd>Escape</kbd>. Focus moves into the drawer on open and back to
+  the trigger on close.
+- **Mode selector** — native radio group in the top bar (arrow-key navigation and
+  `peer-checked` styling for free) plus an `aria-haspopup="menu"` dropdown in the composer with
+  arrow-key roving focus, <kbd>Escape</kbd> and click-outside dismissal. Both write the same state.
+- **Suggestion cards** — place their prompt into the composer and focus the textarea.
+- **Composer** — auto-grows to 200px then scrolls; <kbd>Enter</kbd> submits,
+  <kbd>Shift</kbd>+<kbd>Enter</kbd> inserts a newline; IME composition is respected via
+  `isComposing`; the send button is disabled while the draft is empty.
+
+### Deliberately not wired
+
+The shell has no AI, database, authentication or routing layer yet, and it does not pretend to.
+Submitting the composer or pressing the attach button surfaces an explicit `role="status"` notice
+saying that action is not connected in this build — there are no mocked replies and no fake
+conversation data anywhere in the codebase. Sidebar destinations are `<button>` elements rather
+than links precisely because no routes exist for them yet.
 
 ## TypeScript
 
@@ -104,19 +158,33 @@ Do not relax these to make an error go away — fix the code.
 ## Styling
 
 Tailwind CSS v4 uses a **CSS-first** theme: no `tailwind.config.js`. Semantic tokens live in
-`src/app/globals.css` and map into Tailwind's namespace via `@theme inline`:
+`src/app/globals.css` and map into Tailwind's namespace via `@theme inline`.
 
-| Token         | Utility                  |
-| ------------- | ------------------------ |
-| `--surface`   | `bg-surface`             |
-| `--ink`       | `text-ink`               |
-| `--ink-muted` | `text-ink-muted`         |
-| `--line`      | `border-line`            |
-| `--brand`     | `bg-brand` / `text-brand` |
-| `--danger`    | `bg-danger`              |
+ORVYN is **dark-first**: the palette in `:root` *is* the dark palette and `color-scheme: dark` is
+declared, so the browser renders native UI (scrollbars, form controls) dark too. There is no
+`prefers-color-scheme` branch and therefore no flash of the wrong theme or any JavaScript involved.
+Adding a light theme later means overriding these variables in a `.light` scope — no component
+changes required.
 
-Dark mode follows the OS through `prefers-color-scheme`, so there is no JavaScript and no flash of
-the wrong theme. Adding a manual toggle later only requires a `@custom-variant` line.
+| Token               | Utility                            |
+| ------------------- | ---------------------------------- |
+| `--canvas`          | `bg-canvas`                        |
+| `--surface`         | `bg-surface`                       |
+| `--surface-raised`  | `bg-surface-raised`                |
+| `--ink`             | `text-ink`                         |
+| `--ink-muted`       | `text-ink-muted`                   |
+| `--ink-subtle`      | `text-ink-subtle`                  |
+| `--line`            | `border-line`                      |
+| `--line-strong`     | `border-line-strong`               |
+| `--accent`          | `bg-accent` / `text-accent`        |
+| `--hover` / `--active` | `hover:bg-hover` / `bg-active` |
+| `--danger`          | `bg-danger`                        |
+
+Every text/background pairing in the shipped palette meets WCAG AA or better (verified against the
+compiled values: body text 18.05:1, muted text 7.40:1, subtle text 5.10:1, accent on canvas 5.52:1).
+
+Any `className` a caller can extend is merged with `cn()` from `@/lib/utils` (clsx +
+tailwind-merge), so callers can override variants safely.
 
 Any `className` a caller can extend is merged with `cn()` from `@/lib/utils` (clsx +
 tailwind-merge), so callers can override variants safely.

@@ -1,51 +1,52 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   Design tokens
+   ORVYN design tokens — dark-first
 
-   Semantic values live as plain CSS custom properties on :root so light and
-   dark palettes can be swapped in a single place. `@theme inline` maps them
-   into Tailwind's utility namespace (bg-surface, text-ink, border-line, ...).
+   ORVYN is a dark product, not a dark variant. The canvas is near-black and the
+   only light palette lives in the `:root` block below, so nothing depends on
+   `prefers-color-scheme` and there is no flash of the wrong theme. Adding a
+   light theme later means overriding these variables in a `.light` scope; no
+   component changes.
 
-   Dark mode follows the operating system via `prefers-color-scheme`, so the
-   foundation ships with zero JavaScript and no `.dark` class plumbing.
+   `@theme inline` maps the variables into Tailwind's utility namespace
+   (bg-canvas, text-ink, border-line, text-accent, ...). Components must use
+   those utilities and never hardcode colour values.
    --------------------------------------------------------------------------- */
 
 :root {
-  --radius: 0.625rem;
+  color-scheme: dark;
 
-  /* Surfaces & text */
-  --surface: oklch(0.985 0.002 286);
-  --surface-raised: oklch(1 0 0);
-  --ink: oklch(0.19 0.006 286);
-  --ink-muted: oklch(0.53 0.014 286);
-  --line: oklch(0.905 0.008 286);
+  --radius: 0.75rem;
 
-  /* Brand */
-  --brand: oklch(0.52 0.2 265);
-  --brand-ink: oklch(0.99 0.004 265);
-  --brand-muted: oklch(0.955 0.014 265);
+  /* Depth stack, darkest to lightest */
+  --canvas: oklch(0.152 0.006 285);
+  --surface: oklch(0.192 0.007 285);
+  --surface-raised: oklch(0.226 0.008 285);
+  --surface-inset: oklch(0.125 0.006 285);
 
-  /* Danger */
-  --danger: oklch(0.56 0.21 27);
-  --danger-ink: oklch(0.99 0.005 27);
-}
+  /* Typography */
+  --ink: oklch(0.972 0.002 285);
+  --ink-muted: oklch(0.702 0.013 285);
+  --ink-subtle: oklch(0.548 0.013 285);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: oklch(0.17 0.007 286);
-    --surface-raised: oklch(0.22 0.009 286);
-    --ink: oklch(0.96 0.003 286);
-    --ink-muted: oklch(0.7 0.014 286);
-    --line: oklch(0.32 0.012 286);
+  /* Structure */
+  --line: oklch(0.278 0.009 285);
+  --line-strong: oklch(0.372 0.011 285);
 
-    --brand: oklch(0.66 0.17 265);
-    --brand-ink: oklch(0.16 0.02 265);
-    --brand-muted: oklch(0.29 0.04 265);
+  /* Restrained blue-violet accent */
+  --accent: oklch(0.632 0.132 276);
+  --accent-strong: oklch(0.716 0.128 276);
+  --accent-ink: oklch(0.16 0.032 276);
+  --accent-muted: oklch(0.268 0.042 276);
 
-    --danger: oklch(0.65 0.19 25);
-    --danger-ink: oklch(0.16 0.02 25);
-  }
+  /* Interaction states */
+  --hover: oklch(1 0 0 / 0.055);
+  --active: oklch(1 0 0 / 0.095);
+
+  /* Destructive */
+  --danger: oklch(0.62 0.19 25);
+  --danger-ink: oklch(0.98 0.005 25);
 }
 
 @theme inline {
@@ -53,21 +54,31 @@
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
+  --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-inset: var(--surface-inset);
+
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
-  --color-line: var(--line);
+  --color-ink-subtle: var(--ink-subtle);
 
-  --color-brand: var(--brand);
-  --color-brand-ink: var(--brand-ink);
-  --color-brand-muted: var(--brand-muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-muted: var(--accent-muted);
+
+  --color-hover: var(--hover);
+  --color-active: var(--active);
 
   --color-danger: var(--danger);
   --color-danger-ink: var(--danger-ink);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 5px);
+  --radius-md: calc(var(--radius) - 3px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
@@ -81,11 +92,10 @@
 
   html {
     -webkit-text-size-adjust: 100%;
-    scroll-behavior: smooth;
   }
 
   body {
-    background-color: var(--surface);
+    background-color: var(--canvas);
     color: var(--ink);
     font-family: var(--font-sans);
     font-synthesis-weight: none;
@@ -95,26 +105,43 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--brand);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
   ::selection {
-    background-color: var(--brand);
-    color: var(--brand-ink);
+    background-color: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--line);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--line-strong);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
   *,
   ::before,
   ::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

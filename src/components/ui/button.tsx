@@ -1,42 +1,40 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentPropsWithRef } from "react";
 import { cn } from "@/lib/utils";
 
-/**
- * Exported so anchors and `next/link` can reuse the exact same visual language
- * without a polymorphic wrapper component.
- */
 export const buttonVariants = cva(
   [
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md",
-    "text-sm font-medium transition-colors",
-    "disabled:pointer-events-none disabled:opacity-50",
+    "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md",
+    "text-sm font-medium transition-colors duration-150",
+    "disabled:pointer-events-none disabled:opacity-40",
     "[&_svg]:size-4 [&_svg]:shrink-0",
   ],
   {
     variants: {
       variant: {
-        primary: "bg-brand text-brand-ink hover:bg-brand/90",
-        secondary: "bg-brand-muted text-brand hover:bg-brand-muted/70",
-        outline: "border border-line bg-transparent text-ink hover:bg-brand-muted hover:text-brand",
-        ghost: "bg-transparent text-ink hover:bg-brand-muted hover:text-brand",
-        destructive: "bg-danger text-danger-ink hover:bg-danger/90",
+        primary: "bg-ink text-canvas hover:bg-ink/90",
+        accent: "bg-accent text-accent-ink hover:bg-accent-strong",
+        secondary: "bg-surface-raised text-ink hover:bg-line-strong/60",
+        outline: "border border-line text-ink hover:bg-hover",
+        ghost: "text-ink-muted hover:bg-hover hover:text-ink",
+        danger: "bg-danger text-danger-ink hover:bg-danger/90",
       },
       size: {
         sm: "h-8 px-3 text-xs",
-        md: "h-10 px-4",
-        lg: "h-12 px-6 text-base",
-        icon: "size-10 p-0",
+        md: "h-9 px-3.5",
+        lg: "h-11 px-5",
+        icon: "size-9 p-0",
+        "icon-sm": "size-8 p-0",
       },
     },
     defaultVariants: {
-      variant: "primary",
+      variant: "secondary",
       size: "md",
     },
   },
 );
 
-export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
+export type ButtonProps = ComponentPropsWithRef<"button"> &
   VariantProps<typeof buttonVariants>;
 
 export function Button({ className, variant, size, type = "button", ...props }: ButtonProps) {
