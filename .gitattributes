@@ -1,0 +1,30 @@
+# Normalize text files to LF in the repository and on checkout so diffs stay stable
+# across Windows, macOS and Linux contributors.
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets must never be line-ending converted or diffed as text.
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.svg text eol=lf
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+
+# Lockfiles and generated route types are never merged textually by accident.
+package-lock.json -diff linguist-generated=true
+.next/** linguist-generated=true
