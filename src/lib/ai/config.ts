@@ -10,7 +10,7 @@ import { assertServerOnly } from "./server-only";
  * which would ship every provider key to clients.
  */
 
-export const PROVIDER_IDS = ["omniroute", "freellmapi", "groq"] as const;
+export const PROVIDER_IDS = ["omniroute", "freellmapi", "groq", "pollinations"] as const;
 export type ConfigurableProviderId = (typeof PROVIDER_IDS)[number];
 
 export interface ProviderEnvSpec {
@@ -38,6 +38,12 @@ export const PROVIDER_ENV_SPECS: readonly ProviderEnvSpec[] = [
     displayName: "Groq",
     baseUrlVar: "GROQ_BASE_URL",
     apiKeyVar: "GROQ_API_KEY",
+  },
+  {
+    id: "pollinations",
+    displayName: "Pollinations",
+    baseUrlVar: "POLLINATIONS_BASE_URL",
+    apiKeyVar: "POLLINATIONS_API_KEY",
   },
 ];
 

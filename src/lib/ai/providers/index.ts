@@ -2,6 +2,7 @@ import { resolveAllProviderConfigs } from "../config";
 import { createFreeLlmApiProvider, FREELLMAPI_PROVIDER_ID } from "./freellm";
 import { createGroqProvider, GROQ_PROVIDER_ID } from "./groq";
 import { createOmniRouteProvider, OMNIROUTE_PROVIDER_ID } from "./omniroute";
+import { createPollinationsProvider, POLLINATIONS_PROVIDER_ID } from "./pollinations";
 import { EMPTY_DECLARATION_SET, type DeclarationSet } from "../declarations";
 import type { FetchLike } from "./openai-compatible";
 import type { AiProvider } from "../provider";
@@ -75,6 +76,19 @@ export function createGatewayProviders(options: CreateProvidersOptions = {}): re
       apiKey: groq.ok ? groq.config.apiKey : "",
       ...shared,
       declarations: declarations.forProvider(GROQ_PROVIDER_ID),
+    }),
+  );
+
+  const pollinations = resolved.get(POLLINATIONS_PROVIDER_ID);
+  if (pollinations === undefined) throw new Error("Pollinations env spec is missing");
+  providers.push(
+    createPollinationsProvider({
+      configured: pollinations.ok,
+      configurationDetail: pollinations.ok ? null : pollinations.reason,
+      baseUrl: pollinations.ok ? pollinations.config.baseUrl : "",
+      apiKey: pollinations.ok ? pollinations.config.apiKey : "",
+      ...shared,
+      declarations: declarations.forProvider(POLLINATIONS_PROVIDER_ID),
     }),
   );
 

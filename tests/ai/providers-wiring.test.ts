@@ -6,6 +6,7 @@ import { DeclarationSet } from "@/lib/ai/declarations";
 import { FREELLMAPI_PROVIDER_ID } from "@/lib/ai/providers/freellm";
 import { GROQ_PROVIDER_ID } from "@/lib/ai/providers/groq";
 import { OMNIROUTE_PROVIDER_ID } from "@/lib/ai/providers/omniroute";
+import { POLLINATIONS_PROVIDER_ID } from "@/lib/ai/providers/pollinations";
 import { createProviderRegistry } from "@/lib/ai/registry";
 import { AiGateway } from "@/lib/ai/gateway";
 
@@ -18,11 +19,11 @@ describe("createGatewayProviders", () => {
     const providers = createGatewayProviders({ env: env({ }) });
     assert.deepEqual(
       providers.map((provider) => provider.info.id),
-      ["omniroute", "freellmapi", "groq"],
+      ["omniroute", "freellmapi", "groq", "pollinations"],
     );
     assert.deepEqual(
       providers.map((provider) => provider.info.configured),
-      [false, false, false],
+      [false, false, false, false],
     );
   });
 
@@ -67,6 +68,8 @@ describe("createGatewayProviders", () => {
         FREE_LLM_API_KEY: "k2",
         GROQ_BASE_URL: "https://api.groq.com/openai/v1",
         GROQ_API_KEY: "gk",
+        POLLINATIONS_BASE_URL: "https://gen.pollinations.ai/v1",
+        POLLINATIONS_API_KEY: "pk",
       }),
       fetchImpl: async () =>
         new Response(JSON.stringify({ data: [{ id: "some-model" }] }), { status: 200 }),
@@ -76,12 +79,12 @@ describe("createGatewayProviders", () => {
 
     assert.deepEqual(
       catalog.entries.flatMap((entry) => entry.models.map((model) => model.modelId)),
-      ["some-model", "some-model", "some-model"],
+      ["some-model", "some-model", "some-model", "some-model"],
     );
     assert.deepEqual(catalog.eligible, []);
     assert.deepEqual(
       catalog.excluded.map((entry) => entry.reason),
-      ["model-disabled", "model-disabled", "model-disabled"],
+      ["model-disabled", "model-disabled", "model-disabled", "model-disabled"],
     );
   });
 
@@ -158,6 +161,63 @@ describe("createGatewayProviders", () => {
     assert.deepEqual(
       catalog.eligible.map((model) => `${model.provider}/${model.modelId}`),
       ["groq/llama-3.3-70b-versatile"],
+    );
+  });
+
+  it("marks a fully configured Pollinations gateway as configured and normalizes its base url", () => {
+    const providers = createGatewayProviders({
+      env: env({
+        POLLINATIONS_BASE_URL: "https://gen.pollinations.ai/v1/",
+        POLLINATIONS_API_KEY: "pollinations-key",
+      }),
+    });
+    const pollinations = providers.find(
+      (provider) => provider.info.id === POLLINATIONS_PROVIDER_ID,
+    );
+    assert.equal(pollinations?.info.configured, true);
+    assert.equal(pollinations?.info.configurationDetail, null);
+    assert.equal(pollinations?.info.displayName, "Pollinations");
+  });
+
+  it("declares a Pollinations model and routes to it", async () => {
+    const providers = createGatewayProviders({
+      env: env({
+        POLLINATIONS_BASE_URL: "https://gen.pollinations.ai/v1",
+        POLLINATIONS_API_KEY: "pollinations-key",
+      }),
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ data: [{ id: "openai/gpt-5.4-nano" }] }),
+          { status: 200 },
+        ),
+      declarations: new DeclarationSet([
+        {
+          provider: "pollinations",
+          modelId: "openai/gpt-5.4-nano",
+          enabled: true,
+          capabilities: {
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            supportsStreaming: true,
+            supportsSystemPrompt: true,
+            supportsTools: true,
+            supportsJsonOutput: true,
+          },
+          availability: "available",
+          // Free-only: both published rates must be zero, which is what makes
+          // this a free model rather than an unverifiable one.
+          pricing: { tier: "free", inputPerMillionTokens: 0, outputPerMillionTokens: 0 },
+          context: { contextWindowTokens: 131072, maxOutputTokens: 32768, source: "declared" },
+        },
+      ]),
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry(providers.filter((provider) => provider.info.configured)),
+    });
+    const catalog = await gateway.catalog();
+    assert.deepEqual(
+      catalog.eligible.map((model) => `${model.provider}/${model.modelId}`),
+      ["pollinations/openai/gpt-5.4-nano"],
     );
   });
 });
