@@ -80,6 +80,15 @@ export function UserIcon(props: IconProps) {
   );
 }
 
+export function SignOutIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <path d="M14 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H14" />
+      <path d="M17 8.5 20.5 12 17 15.5M20 12h-9.5" />
+    </Stroke>
+  );
+}
+
 export function MenuIcon(props: IconProps) {
   return (
     <Stroke {...props}>

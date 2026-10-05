@@ -92,6 +92,11 @@ revoke all on function private.set_usage_signing_secret(text) from public, anon,
 -- A plain `=` would leak, through response timing, how many leading characters of
 -- a guessed digest matched. Both digests here are fixed-length SHA-256 hex, so
 -- the length check leaks nothing.
+--
+-- `get_byte` is defined on `bytea`, not `text`, so each operand is converted with
+-- `convert_to(..., 'UTF8')` first. `convert_to` is used rather than a `::bytea`
+-- cast because the cast raises on non-ASCII text, and one of the two arguments is
+-- caller-supplied; a rejected comparison must return false, not error out.
 create or replace function private.constant_time_equals(a text, b text)
 returns boolean
 language sql
@@ -100,10 +105,12 @@ as $$
   select case
     when a is null or b is null then false
     when octet_length(a) <> octet_length(b) then false
-    else (
-      select bool_and(get_byte(a, i) = get_byte(b, i))
+    else coalesce((
+      select bool_and(
+        get_byte(convert_to(a, 'UTF8'), i) = get_byte(convert_to(b, 'UTF8'), i)
+      )
       from generate_series(0, octet_length(a) - 1) as i
-    )
+    ), true)
   end;
 $$;
 

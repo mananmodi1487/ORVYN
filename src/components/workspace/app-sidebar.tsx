@@ -1,18 +1,18 @@
 "use client";
 
 import type { ComponentType } from "react";
+import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui";
 import {
-  account,
   brand,
   conversationEmptyState,
   conversationsSection,
   sidebarNav,
-  usageCopy,
   type SidebarNavId,
 } from "@/config/workspace";
+import { signOut } from "@/lib/auth/actions";
+import type { AuthenticatedUser } from "@/lib/auth/session";
 import type { UseAccountUsage } from "@/lib/hooks";
-import { formatTokens } from "@/lib/ai/usage";
 import { cn } from "@/lib/utils";
 import {
   BrandMark,
@@ -20,6 +20,7 @@ import {
   PanelCollapseIcon,
   PlusIcon,
   SettingsIcon,
+  SignOutIcon,
   UniverseIcon,
   UserIcon,
   type IconProps,
@@ -39,6 +40,8 @@ export type AppSidebarProps = {
   onNavigate: () => void;
   onNewConversation: () => void;
   usage: UseAccountUsage;
+  /** `null` only while the session is still being resolved. */
+  user: AuthenticatedUser | null;
 };
 
 export function AppSidebar({
@@ -48,6 +51,7 @@ export function AppSidebar({
   onNavigate,
   onNewConversation,
   usage,
+  user,
 }: AppSidebarProps) {
   const today = usage.summary?.userDaily ?? null;
 
@@ -132,27 +136,11 @@ export function AppSidebar({
       <div className="shrink-0 border-t border-line p-3">
         <UsageMeter usage={usage} collapsed={collapsed} />
 
-        <button
-          type="button"
-          aria-label={account.name}
-          title={collapsed ? account.name : undefined}
-          className={cn(
-            "mt-2 flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left",
-            "transition-colors duration-150 hover:bg-hover",
-            collapsed && "lg:justify-center lg:px-0",
-          )}
-        >
-          <span className="grid size-6 shrink-0 place-items-center rounded-full border border-line text-ink-subtle">
-            <UserIcon className="size-3" />
-          </span>
-          <span className={cn("flex min-w-0 flex-col", collapsed && "lg:hidden")}>
-            <span className="truncate text-[13px] text-ink">{account.name}</span>
-            <span className="truncate text-[11px] text-ink-subtle">{account.status}</span>
-          </span>
-          <span className={cn("sr-only", today !== null && "not-sr-only")}>
-            {today === null ? usageCopy.unavailable : formatTokens(today.totalTokens)}
-          </span>
-        </button>
+        {user === null ? null : (
+          <div className={cn("mt-2", collapsed && "lg:justify-center lg:px-0")}>
+            <AccountButton user={user} collapsed={collapsed} todayTokens={today?.totalTokens ?? null} />
+          </div>
+        )}
 
         <button
           type="button"
@@ -176,6 +164,60 @@ export function AppSidebar({
           <span className={cn("truncate", collapsed && "lg:hidden")}>Collapse</span>
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The signed-in account and its sign-out control.
+ *
+ * The email is the whole address rather than a shortened form: truncating it in
+ * the DOM would change what a user copies on paste, and this is the one place
+ * where being sure which account is active matters.
+ */
+function AccountButton({
+  user,
+  collapsed,
+  todayTokens,
+}: {
+  readonly user: AuthenticatedUser;
+  readonly collapsed: boolean;
+  readonly todayTokens: number | null;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <div className="flex items-center gap-1">
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-2",
+          collapsed && "lg:justify-center lg:px-0",
+        )}
+      >
+        <span className="grid size-6 shrink-0 place-items-center rounded-full border border-line text-ink-subtle">
+          <UserIcon className="size-3" />
+        </span>
+        <span className={cn("flex min-w-0 flex-col", collapsed && "lg:hidden")}>
+          <span className="truncate text-[13px] text-ink">{user.email}</span>
+          <span className="truncate text-[11px] text-ink-subtle">
+            {todayTokens === null ? "Usage unavailable" : "Active"}
+          </span>
+        </span>
+      </div>
+
+      <form action={signOut} className="shrink-0">
+        <Button
+          type="submit"
+          variant="ghost"
+          size="icon-sm"
+          disabled={pending}
+          title="Sign out"
+          aria-label="Sign out"
+          className={cn("text-ink-subtle", collapsed && "lg:hidden")}
+        >
+          <SignOutIcon />
+        </Button>
+      </form>
     </div>
   );
 }

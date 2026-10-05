@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultResponseMode, type ResponseMode } from "@/config/workspace";
+import type { AuthenticatedUser } from "@/lib/auth/session";
 import { useAccountUsage, useConversation, useIsClient, useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { AppSidebar } from "./app-sidebar";
@@ -14,7 +15,12 @@ const DESKTOP_QUERY = "(min-width: 1024px)";
 const SIDEBAR_ID = "orvyn-sidebar";
 const MAIN_ID = "orvyn-main";
 
-export function WorkspaceShell() {
+export type WorkspaceShellProps = {
+  /** Resolved on the server; this component never decides who is signed in. */
+  readonly user: AuthenticatedUser;
+};
+
+export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState<ResponseMode>(defaultResponseMode);
@@ -119,9 +125,10 @@ export function WorkspaceShell() {
           onNavigate={() => {
             if (!isDesktop) setDrawerOpen(false);
           }}
-          onNewConversation={handleNewConversation}
-          usage={usage}
-        />
+onNewConversation={handleNewConversation}
+            usage={usage}
+            user={user}
+          />
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">

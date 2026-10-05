@@ -1,6 +1,8 @@
 export { AppSidebar } from "./app-sidebar";
 export type { AppSidebarProps } from "./app-sidebar";
 
+export { AuthPanel } from "./auth-panel";
+
 export { ComposerModeMenu } from "./composer-mode-menu";
 export type { ComposerModeMenuProps } from "./composer-mode-menu";
 
@@ -26,3 +28,4 @@ export { WelcomePanel } from "./welcome-panel";
 export type { WelcomePanelProps } from "./welcome-panel";
 
 export { WorkspaceShell } from "./workspace-shell";
+export type { WorkspaceShellProps } from "./workspace-shell";

@@ -1,6 +1,10 @@
 /**
  * `POST /api/chat` — the only path from the browser to a model.
  *
+ * Requires a signed-in user. An anonymous request is refused with a 401 before
+ * the body is read and before the gateway is consulted, so it cannot reach a
+ * provider or incur token cost.
+ *
  * The browser sends validated conversation turns and receives a stream of
  * `ChatStreamEvent` frames. It never names a provider, never sees a credential,
  * and never decides which model answers: that is the gateway's job.
@@ -17,6 +21,7 @@
  *   arrives as a terminal frame. Only a failure while generating does. Both come
  *   from `toChatStreamError`, so the client parses exactly one shape either way.
  */
+import { requireUser, unauthorizedResponse } from "@/lib/auth/guard";
 import { parseChatRequest } from "@/lib/ai/chat-request";
 import {
   ERROR_STATUS,
@@ -51,6 +56,12 @@ const NO_STORE_HEADERS: Readonly<Record<string, string>> = {
 };
 
 export async function POST(request: Request): Promise<Response> {
+  // Checked before the body is read or the gateway is touched. An anonymous
+  // request costs nothing here, which matters because every accepted request
+  // calls a real provider and its usage must be attributable to an account.
+  const auth = await requireUser();
+  if (!auth.allowed) return unauthorizedResponse();
+
   let events: AsyncGenerator<ChatStreamEvent>;
   try {
     const chatRequest = parseChatRequest(await readJsonBody(request));

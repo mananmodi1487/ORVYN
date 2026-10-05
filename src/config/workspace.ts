@@ -74,9 +74,16 @@ export const conversationsSection = {
   label: "Conversations",
 } as const;
 
-export const account = {
-  name: "Account",
-  status: "Not signed in",
+/**
+ * The signed-out state.
+ *
+ * The signed-in account is read from the session, never from here — a static
+ * config value would be a second, competing source of truth for who is using the
+ * product.
+ */
+export const signedOutState = {
+  title: "Sign in",
+  description: "Sign in to start a conversation.",
 } as const;
 
 export const missionView = {
