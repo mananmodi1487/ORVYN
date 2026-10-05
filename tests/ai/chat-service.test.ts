@@ -148,6 +148,18 @@ describe("streamChatEvents sequencing", () => {
     assert.equal(done?.type === "done" ? done.usage : null, null);
   });
 
+  it("reports no usage when the provider sends none", async () => {
+    // A provider that ignores `stream_options.include_usage` reports nothing, and
+    // nothing gets recorded. This is the "usage unavailable" path end to end.
+    const provider = createFakeProvider({ id: "p", models: [model], chunks: ["ok"] });
+    const events = await collect(streamChatEvents(gatewayWith(provider), [model], request));
+
+    const recorded = events
+      .filter((event) => event.type === "done")
+      .map((event) => (event.type === "done" ? event.usage : "missing"));
+    assert.deepEqual(recorded, [null], "an unreported reading must not become a zero row");
+  });
+
   it("forwards usage reported mid-stream, with a computed total", async () => {
     const usage: TokenUsage = { inputTokens: 12, outputTokens: 7 };
     const provider = withStream(createFakeProvider({ id: "p", models: [model] }), async function* () {
@@ -179,6 +191,36 @@ describe("streamChatEvents sequencing", () => {
     const events = await collect(streamChatEvents(gatewayWith(provider), [model], request));
     const done = events.at(-1);
     assert.equal(done?.type === "done" ? done.usage : null, null);
+  });
+
+  it("records the provider's own counts and nothing invented", async () => {
+    // This is the value the route hands to the signed write path, so it is the
+    // last point where a forged figure could enter. The counts below come from the
+    // provider chunk and nowhere else; the total is the sum, and no other field of
+    // the record is derived from the request.
+    const provider = withStream(createFakeProvider({ id: "p", models: [model] }), async function* () {
+      yield { type: "text", delta: "hi" };
+      yield { type: "usage", usage: { inputTokens: 1204, outputTokens: 88 } };
+      yield { type: "done", finishReason: "stop" };
+    });
+
+    const events = await collect(streamChatEvents(gatewayWith(provider), [model], request));
+    const meta = events.find((event) => event.type === "meta");
+    const done = events.at(-1);
+    assert.equal(done?.type === "done" ? done.usage?.totalTokens : null, 1292);
+
+    const record = {
+      provider: meta?.type === "meta" ? meta.model.provider : null,
+      modelId: meta?.type === "meta" ? meta.model.modelId : null,
+      inputTokens: done?.type === "done" ? (done.usage?.inputTokens ?? null) : null,
+      outputTokens: done?.type === "done" ? (done.usage?.outputTokens ?? null) : null,
+    };
+    assert.deepEqual(record, {
+      provider: "p",
+      modelId: "m1",
+      inputTokens: 1204,
+      outputTokens: 88,
+    });
   });
 
   it("still reports the model when the answer is empty", async () => {

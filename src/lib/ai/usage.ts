@@ -87,3 +87,17 @@ export const MONTHLY_FREE_POOL_TARGET_TOKENS = 10_000_000_000;
 export function formatTokens(count: number): string {
   return count.toLocaleString("en-US");
 }
+
+/**
+ * One completed response's usage, ready to be recorded.
+ *
+ * Both counts are nullable so a provider that reported only one side can be
+ * stored faithfully, but at least one must be present — a row with neither
+ * carries no information, and the database rejects it.
+ */
+export interface UsageRecord {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+}

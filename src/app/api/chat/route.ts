@@ -114,6 +114,13 @@ export async function POST(request: Request): Promise<Response> {
 /**
  * Persists a completed response's provider-reported usage.
  *
+ * This is the only place a usage row is ever created, and its only inputs are the
+ * serving model and the usage block `streamChatEvents` read out of the provider
+ * response. Nothing from the request body reaches it: `parseChatRequest` discards
+ * unknown fields, so a client cannot name a model or a token count. The row is
+ * signed inside `recordUsage`, which is what lets the database refuse anything it
+ * did not originate.
+ *
  * Deliberately not awaited: the answer has already streamed, and failing it
  * because a bookkeeping row could not be written would trade a real answer for a
  * counter. Failures are swallowed for the same reason.

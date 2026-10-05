@@ -9,20 +9,31 @@
  * - No signed-in user → nothing is recorded, because usage has to be attributable
  *   to someone; anonymous traffic reports unavailable instead of being pooled
  *   into a total no one can audit.
+ * - No signing secret → nothing is recorded. See `recordUsage` for why that is
+ *   the only correct response.
  *
- * The secret / service-role key is never used. Writes go through the caller's own
- * session, so the `ai_usage` RLS policies are the only gate.
+ * The secret / service-role key is never used, and neither is a direct table
+ * write. The browser holds the same Supabase session the server does, so any
+ * policy that permits a client insert is a policy the client can satisfy itself.
+ * Instead every row is signed here with a server-only HMAC and handed to
+ * `private.ai_usage_record`, which verifies the signature and writes the row.
+ * A client calling that function directly has no way to produce a valid one.
  */
 import { assertServerOnly } from "./server-only";
-import { MONTHLY_FREE_POOL_TARGET_TOKENS, type UsageTotals } from "./usage";
+import {
+  MONTHLY_FREE_POOL_TARGET_TOKENS,
+  type UsageRecord,
+  type UsageTotals,
+} from "./usage";
+import {
+  newUsageNonce,
+  resolveUsageSigningSecret,
+  signUsagePayload,
+  usageSigningPayload,
+} from "./usage-signing";
 
-/** One provider-reported reading to persist. */
-export interface UsageRecord {
-  readonly provider: string;
-  readonly modelId: string;
-  readonly inputTokens: number | null;
-  readonly outputTokens: number | null;
-}
+/** The only write path. Exists outside `public` and is unreachable as a table. */
+const RECORD_FUNCTION = "ai_usage_record";
 
 export interface UsageSummary {
   /** `null` when ORVYN cannot attribute usage to a user. */
@@ -41,42 +52,48 @@ export const UNAVAILABLE_SUMMARY: UsageSummary = {
 };
 
 /**
- * Whether usage can be recorded right now.
- *
- * Checked before every write so an unconfigured deployment never turns a missing
- * project into a 500 on an otherwise successful chat response.
- */
-export async function canRecordUsage(): Promise<boolean> {
-  assertServerOnly("@/lib/ai/usage-store");
-  const client = await getClient();
-  if (client === null) return false;
-  const { data, error } = await client.auth.getUser();
-  return error === null && data.user !== null;
-}
-
-/**
  * Persists one provider-reported reading for the signed-in user.
+ *
+ * The user id is read from the session and never passed in, the token counts come
+ * from the provider response, and the row is signed before it is sent. An unsigned
+ * write is never attempted: without a secret there is no legitimate way to write,
+ * so the honest outcome is no row and "usage unavailable", not a fallback path that
+ * a client could reach instead.
  *
  * Best-effort by design: a usage row is bookkeeping, and failing a completed
  * answer because the counter could not be written would be the worse outcome.
  * Returns whether the row was written.
  */
 export async function recordUsage(record: UsageRecord): Promise<boolean> {
+  const secret = resolveUsageSigningSecret();
+  if (secret === null) return false;
+
   const client = await getClient();
   if (client === null) return false;
 
   const { data, error } = await client.auth.getUser();
   if (error !== null || data.user === null) return false;
 
-  const { error: insertError } = await client.from("ai_usage").insert({
-    user_id: data.user.id,
+  const nonce = newUsageNonce();
+  const payload = usageSigningPayload({
+    userId: data.user.id,
     provider: record.provider,
-    model_id: record.modelId,
-    input_tokens: record.inputTokens,
-    output_tokens: record.outputTokens,
+    modelId: record.modelId,
+    inputTokens: record.inputTokens,
+    outputTokens: record.outputTokens,
+    nonce,
   });
 
-  return insertError === null;
+  const { error: rpcError } = await client.rpc(RECORD_FUNCTION, {
+    p_provider: record.provider,
+    p_model_id: record.modelId,
+    p_input_tokens: record.inputTokens,
+    p_output_tokens: record.outputTokens,
+    p_nonce: nonce,
+    p_signature: signUsagePayload(secret, payload),
+  });
+
+  return rpcError === null;
 }
 
 /**
