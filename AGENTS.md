@@ -20,9 +20,37 @@ src/
     workspace/    the product shell — stateful, owns sidebar / mode / draft
   config/         static, typed, environment-free configuration
   utils/supabase/ Supabase clients (browser / server), env access, updateSession
-  lib/            pure helpers (`cn()`) and framework-light hooks
+  lib/            pure helpers (`cn()`), framework-light hooks, and `lib/ai/` (see below)
   proxy.ts        Next.js 16 request entry — NOT middleware.ts
 ```
+
+## AI provider layer (`src/lib/ai/`)
+
+Server-only. It owns model discovery, health, eligibility, and routing for every
+AI provider, so a new provider is an adapter plus a declaration — never a change
+to routing logic.
+
+- `types.ts` → `errors.ts` → `capabilities.ts` → `eligibility.ts` → `router.ts` →
+  `gateway.ts`. Dependencies point one way; nothing imports `gateway.ts` except
+  composition code.
+- Credentials come from `OMNIROUTE_*` and `FREE_LLM_API_*`. Never prefix them
+  with `NEXT_PUBLIC_`. `assertServerOnly()` is a runtime guard, not a build one —
+  `server-only` is not installed.
+- **A provider missing credentials is `configured: false`, never "down", and is
+  never contacted.** `AiGateway.health()` and `catalog()` enforce this centrally;
+  do not rely on a provider implementation to remember it.
+- Model capabilities, pricing, and context limits come from operator
+  `ModelDeclaration`s, never from parsing a model id. An undeclared model reports
+  `availability: "unknown"`, `enabled: false`, and is ineligible. Do not guess.
+- Eligibility fails closed: unknown availability and unpriced models are never
+  routed to, and an unknown latency is not treated as fast.
+- Routing is deterministic. Ties break on `provider` then `modelId`; if a new
+  strategy is added it must be order-independent and independently tested.
+- Errors are `AiProviderError` with a `code` from `AI_ERROR_CODES`. Callers branch
+  on `code`, never on message text. Nothing else may cross the provider boundary.
+- New providers: implement `AiProvider`, or reuse
+  `createOpenAiCompatibleProvider` for OpenAI-shaped APIs, and register
+  explicitly in `providers/index.ts`. Nothing self-registers on import.
 
 ## Supabase rules
 
@@ -59,6 +87,9 @@ src/
 ## Verify before you finish
 
 ```bash
-npm run check     # lint + typecheck + production build
+npm run check     # lint + typecheck + unit tests + production build
 ```
+
+Tests use Node's built-in runner through `tsx` (there is no test framework
+dependency). `npm run test:ai` runs just the AI layer.
 

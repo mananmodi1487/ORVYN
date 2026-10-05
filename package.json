@@ -15,7 +15,9 @@
     "lint:fix": "eslint --fix",
     "typegen": "next typegen",
     "typecheck": "next typegen && tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm run build",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:ai": "node --import tsx --test \"tests/ai/**/*.test.ts\"",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "clean": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\""
   },
   "dependencies": {
@@ -36,6 +38,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   },
   "allowScripts": {

@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent Manager worktrees and session state. These are separate checkouts with
+# their own node_modules and build output, not part of this repository's source.
+/.kilo/

@@ -15,6 +15,10 @@ const eslintConfig = defineConfig([
     // Additional build output and caches.
     "node_modules/**",
     "coverage/**",
+    // Agent Manager worktrees and session state live under `.kilo/`. They are
+    // separate checkouts with their own `node_modules` and `.next`; linting them
+    // would report thousands of errors from files this repo does not own.
+    ".kilo/**",
   ]),
 ]);
 
