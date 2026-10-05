@@ -64,9 +64,12 @@ function sse(lines: readonly string[]): Response {
 
 const declarations: ModelDeclaration[] = [
   {
+    provider: "omniroute",
     modelId: "chat-large",
     displayName: "Chat Large",
     enabled: true,
+    availability: "available",
+    priority: 10,
     capabilities: {
       inputModalities: ["text"],
       outputModalities: ["text"],

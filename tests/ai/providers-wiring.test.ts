@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { createGatewayProviders } from "@/lib/ai/providers";
+import { DeclarationSet } from "@/lib/ai/declarations";
 import { FREELLMAPI_PROVIDER_ID } from "@/lib/ai/providers/freellm";
 import { OMNIROUTE_PROVIDER_ID } from "@/lib/ai/providers/omniroute";
 import { createProviderRegistry } from "@/lib/ai/registry";
@@ -76,20 +77,19 @@ describe("createGatewayProviders", () => {
       }),
       fetchImpl: async () =>
         new Response(JSON.stringify({ data: [{ id: "chat" }] }), { status: 200 }),
-      declarations: {
-        omniroute: [
-          {
-            modelId: "chat",
-            enabled: true,
-            capabilities: {
-              inputModalities: ["text"],
-              outputModalities: ["text"],
-              supportsStreaming: true,
-              supportsSystemPrompt: true,
-            },
+      declarations: new DeclarationSet([
+        {
+          provider: "omniroute",
+          modelId: "chat",
+          enabled: true,
+          capabilities: {
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            supportsStreaming: true,
+            supportsSystemPrompt: true,
           },
-        ],
-      },
+        },
+      ]),
     });
     const gateway = new AiGateway({
       registry: createProviderRegistry(providers.filter((provider) => provider.info.configured)),

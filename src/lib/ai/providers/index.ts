@@ -1,7 +1,7 @@
 import { resolveAllProviderConfigs } from "../config";
 import { createFreeLlmApiProvider, FREELLMAPI_PROVIDER_ID } from "./freellm";
 import { createOmniRouteProvider, OMNIROUTE_PROVIDER_ID } from "./omniroute";
-import type { ModelDeclaration } from "./model-declaration";
+import { EMPTY_DECLARATION_SET, type DeclarationSet } from "../declarations";
 import type { FetchLike } from "./openai-compatible";
 import type { AiProvider } from "../provider";
 
@@ -13,21 +13,24 @@ import type { AiProvider } from "../provider";
  * so the catalog can report *why* it is unavailable instead of pretending the
  * provider does not exist.
  *
- * No model declarations are shipped. Capabilities, pricing, and context limits
- * have to be declared by an operator per environment; until then every model
+ * Model declarations are supplied by the caller as a validated `DeclarationSet`.
+ * Nothing is shipped: capabilities, pricing, context limits, and priority have
+ * to be declared by an operator per environment, so until they are, every model
  * reports unknown capabilities and nothing is eligible for routing. That is the
- * intended default: a model is opted into deliberately, not inferred from its id.
+ * intended default — a model is opted into deliberately, never inferred from its
+ * id, and never filled in with a plausible guess.
  */
 export interface CreateProvidersOptions {
   readonly env?: NodeJS.ProcessEnv | undefined;
   readonly fetchImpl?: FetchLike | undefined;
   readonly timeoutMs?: number | undefined;
-  /** Per-provider model facts, keyed by provider id. */
-  readonly declarations?: Readonly<Record<string, readonly ModelDeclaration[]>> | undefined;
+  /** Validated declarations. Lookups are provider-qualified. */
+  readonly declarations?: DeclarationSet | undefined;
 }
 
 export function createGatewayProviders(options: CreateProvidersOptions = {}): readonly AiProvider[] {
   const resolved = resolveAllProviderConfigs(options.env ?? process.env);
+  const declarations = options.declarations ?? EMPTY_DECLARATION_SET;
   const shared = {
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
@@ -44,7 +47,7 @@ export function createGatewayProviders(options: CreateProvidersOptions = {}): re
       baseUrl: omni.ok ? omni.config.baseUrl : "",
       apiKey: omni.ok ? omni.config.apiKey : "",
       ...shared,
-      declarations: options.declarations?.[OMNIROUTE_PROVIDER_ID] ?? [],
+      declarations: declarations.forProvider(OMNIROUTE_PROVIDER_ID),
     }),
   );
 
@@ -57,7 +60,7 @@ export function createGatewayProviders(options: CreateProvidersOptions = {}): re
       baseUrl: free.ok ? free.config.baseUrl : "",
       apiKey: free.ok ? free.config.apiKey : "",
       ...shared,
-      declarations: options.declarations?.[FREELLMAPI_PROVIDER_ID] ?? [],
+      declarations: declarations.forProvider(FREELLMAPI_PROVIDER_ID),
     }),
   );
 

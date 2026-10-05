@@ -162,6 +162,14 @@ export function scoreForStrategy(
 /**
  * Ranks already-eligible candidates. Eligibility is the caller's job; the
  * router only decides among models that passed.
+ *
+ * Ordering is a total order, so the result never depends on input order:
+ * finite-before-unscored, then strategy score, then declared priority
+ * descending, then provider and model id ascending.
+ *
+ * `priority` is a tiebreak only. It expresses operator preference among
+ * candidates a strategy already rates equally; it can never promote a model
+ * that eligibility rejected, and it never overrides a strategy's own ordering.
  */
 export function rankCandidates(
   candidates: readonly ModelDescriptor[],
@@ -179,6 +187,8 @@ export function rankCandidates(
       const finiteB = Number.isFinite(b.score) ? 0 : 1;
       if (finiteA !== finiteB) return finiteA - finiteB;
       if (a.score !== b.score) return a.score - b.score;
+      // Higher operator priority first.
+      if (a.model.priority !== b.model.priority) return b.model.priority - a.model.priority;
       return tiebreakKey(a.model).localeCompare(tiebreakKey(b.model));
     });
 }

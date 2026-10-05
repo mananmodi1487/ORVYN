@@ -99,6 +99,11 @@ export interface ModelDescriptor {
   readonly enabled: boolean;
   readonly pricing: ModelPricing;
   readonly context: ModelContextInfo;
+  /**
+   * Operator preference, higher wins among candidates a routing strategy scores
+   * equally. Defaults to 0. Advisory only — it never overrides eligibility.
+   */
+  readonly priority: number;
   readonly tags: readonly string[];
 }
 

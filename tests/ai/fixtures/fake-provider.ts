@@ -61,6 +61,7 @@ export function makeModel(
       maxOutputTokens: 4_096,
       source: "declared",
     },
+    priority: overrides.priority ?? 0,
     tags: overrides.tags ?? [],
   };
 }
@@ -173,6 +174,7 @@ function findModel(
       enabled: false,
       pricing: { currency: "USD", tier: "unknown", inputPerMillionTokens: null, outputPerMillionTokens: null },
       context: { contextWindowTokens: null, maxOutputTokens: null, source: "unknown" },
+      priority: 0,
       tags: [],
     }
   );

@@ -163,6 +163,11 @@ export function createOpenAiCompatibleProvider(
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
   });
+  /**
+   * Only declarations addressed to this provider are indexed here. Passing the
+   * full set is safe: a declaration for another provider can never match, since
+   * lookups are provider-qualified.
+   */
   const declarations = indexDeclarations(options.declarations);
   const fallbackModelIds = options.fallbackModelIds ?? [];
   const now = options.now ?? (() => new Date());

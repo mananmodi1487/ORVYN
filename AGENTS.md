@@ -52,6 +52,32 @@ to routing logic.
   `createOpenAiCompatibleProvider` for OpenAI-shaped APIs, and register
   explicitly in `providers/index.ts`. Nothing self-registers on import.
 
+### Model declarations (`src/lib/ai/declaration-*.ts`)
+
+Declarations are the *only* way a discovered model becomes routable. A provider's
+`/models` response carries no capabilities, price, or context limits, and those
+must never be inferred from a model id.
+
+- Source of truth is `ai.models.json` (`{"models": []}` by default — no model is
+  routable until an operator opts it in) or `ORVYN_AI_DECLARATIONS_PATH` /
+  `ORVYN_AI_DECLARATIONS_JSON`. Both are read server-side only.
+- Declarations are **provider-qualified**: `provider` + `modelId` together. The
+  same id on two providers is two declarations.
+- `declaration-schema.ts` is the only gate between untrusted JSON and the typed
+  `ModelDeclaration`. It is strict on purpose: unknown keys, wrong types,
+  unrecognised enums, and contradictions are **errors**, never dropped. A
+  silently-ignored `"inputModalites"` typo would leave a model looking
+  text-capable when the operator said otherwise.
+- **Fail closed.** An omitted field stays unknown; it is never filled with a
+  plausible default. Undeclared model → `availability: "unknown"` → ineligible.
+- `enabled: true` is rejected alongside `availability: "unavailable" | "retired"`;
+  a model that cannot serve traffic must stay switched off.
+- `priority` is a router **tiebreak only**, applied after the strategy score and
+  before the `provider`/`modelId` tiebreak. It can never promote a model that
+  eligibility rejected.
+- Issue messages name fields and enums, never values, so an operator can log
+  `summary` without leaking a nearby key.
+
 ## Supabase rules
 
 - Never read the secret / service-role key in application code, and never give it

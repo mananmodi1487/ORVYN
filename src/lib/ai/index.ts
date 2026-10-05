@@ -96,12 +96,41 @@ export {
   type OmniRouteProviderOptions,
 } from "./providers/omniroute";
 export {
+  DECLARABLE_AVAILABILITIES,
+  DEFAULT_PRIORITY,
   describeModel,
   humanizeModelId,
   indexDeclarations,
+  lookupDeclaration,
   type DeclarationIndex,
+  type DeclarableAvailability,
   type ModelDeclaration,
 } from "./providers/model-declaration";
+export {
+  DECLARATIONS_JSON_VAR,
+  DECLARATIONS_PATH_VAR,
+  loadDeclarationSetOrEmpty,
+  loadDeclarationsFromEnv,
+  loadDeclarationsFromFile,
+  loadDeclarationsFromJson,
+  type DeclarationLoadResult,
+  type DeclarationSource,
+} from "./declaration-loader";
+export {
+  DECLARATION_ISSUE_CODES,
+  formatDeclarationIssues,
+  isDeclarableAvailability,
+  validateDeclarationDocument,
+  validateModelDeclaration,
+  type DeclarationIssue,
+  type DeclarationIssueCode,
+  type DeclarationResult,
+} from "./declaration-schema";
+export {
+  DeclarationSet,
+  EMPTY_DECLARATION_SET,
+  createDeclarationSet,
+} from "./declarations";
 export {
   createOpenAiCompatibleProvider,
   parseSseDataLine,
