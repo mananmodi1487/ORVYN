@@ -77,7 +77,7 @@ export function MessageComposer({
 
   return (
     <form onSubmit={onSubmit} className="w-full" aria-label="Message ORVYN">
-      <div className="rounded-2xl border border-line bg-surface-raised transition-colors duration-150 focus-within:border-line-strong">
+      <div className="rounded-xl border border-line bg-surface transition-colors duration-150 focus-within:border-line-strong">
         <label htmlFor={COMPOSER_ID} className="sr-only">
           Message ORVYN
         </label>
@@ -93,14 +93,14 @@ export function MessageComposer({
           onKeyDown={onKeyDown}
           placeholder="Ask ORVYN anything"
           className={cn(
-            "block w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1",
+            "block w-full resize-none overflow-y-auto bg-transparent px-4 pt-3.5 pb-1",
             "text-[15px] leading-6 text-ink outline-none",
             "placeholder:text-ink-subtle",
           )}
         />
 
-        <div className="flex items-center justify-between gap-3 px-3 pt-1 pb-3">
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between gap-3 px-2.5 pt-1 pb-2.5">
+          <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -113,7 +113,7 @@ export function MessageComposer({
           </div>
 
           <div className="flex items-center gap-3">
-            <p className="hidden items-center gap-1 text-xs text-ink-subtle sm:flex">
+            <p className="hidden items-center gap-1 text-[11px] text-ink-subtle lg:flex">
               <Kbd>Enter</Kbd>
               <span>to send</span>
               <span aria-hidden="true">·</span>
@@ -125,8 +125,8 @@ export function MessageComposer({
             {isStreaming && onStop !== undefined ? (
               <Button
                 type="button"
-                variant="accent"
-                size="icon"
+                variant="secondary"
+                size="icon-sm"
                 aria-label="Stop generating"
                 onClick={onStop}
               >
@@ -135,8 +135,8 @@ export function MessageComposer({
             ) : (
               <Button
                 type="submit"
-                variant="accent"
-                size="icon"
+                variant="primary"
+                size="icon-sm"
                 aria-label="Send message"
                 disabled={!canSend || isStreaming}
               >
@@ -147,7 +147,7 @@ export function MessageComposer({
         </div>
       </div>
 
-      <p role="status" className="mt-2 min-h-4 px-1 text-xs text-ink-subtle">
+      <p role="status" className="mt-2 min-h-4 px-1 text-[11px] text-ink-subtle">
         {notice}
       </p>
     </form>

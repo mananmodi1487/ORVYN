@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultResponseMode, type ResponseMode } from "@/config/workspace";
-import { useConversation, useIsClient, useMediaQuery } from "@/lib/hooks";
+import { useAccountUsage, useConversation, useIsClient, useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { AppSidebar } from "./app-sidebar";
 import { ConversationTranscript } from "./conversation-transcript";
@@ -21,6 +21,9 @@ export function WorkspaceShell() {
   const [draft, setDraft] = useState("");
 
   const conversation = useConversation();
+  // Usage is refetched after each completed reply, so the pool figures here
+  // include the response the transcript just showed.
+  const usage = useAccountUsage(conversation.turns.length);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const isClient = useIsClient();
@@ -117,6 +120,7 @@ export function WorkspaceShell() {
             if (!isDesktop) setDrawerOpen(false);
           }}
           onNewConversation={handleNewConversation}
+          usage={usage}
         />
       </aside>
 
@@ -138,12 +142,13 @@ export function WorkspaceShell() {
                 isStreaming={conversation.isStreaming}
                 error={conversation.error}
                 activeModel={conversation.activeModel}
+                conversationUsage={conversation.conversationUsage}
               />
             )}
           </div>
 
           <div className="shrink-0 border-t border-line bg-canvas">
-            <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6 sm:py-5">
+            <div className="mx-auto w-full max-w-3xl px-5 py-4 sm:px-8 sm:py-5">
               <MessageComposer
                 value={draft}
                 onValueChange={setDraft}

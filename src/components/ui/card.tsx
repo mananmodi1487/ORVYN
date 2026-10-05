@@ -6,7 +6,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
     <div
       data-slot="card"
       className={cn(
-        "rounded-xl border border-line bg-surface-raised text-ink",
+        "rounded-lg border border-line bg-surface text-ink",
         "transition-colors duration-150",
         className,
       )}

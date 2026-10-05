@@ -84,6 +84,11 @@ function toChatBody(request: ChatRequest, model: ModelRef, stream: boolean): unk
       content: message.content,
     })),
     stream,
+    // Without this, OpenAI-compatible providers send no usage on a streamed
+    // response at all — the numbers only appear on the final SSE frame. Asking
+    // is what makes real per-response accounting possible rather than an
+    // estimate; a provider that ignores it simply reports nothing.
+    ...(stream ? { stream_options: { include_usage: true } } : {}),
     ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
     ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
   };

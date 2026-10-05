@@ -7,7 +7,7 @@
  * never sees a key.
  */
 import type { AiErrorCode } from "./errors";
-import type { ChatRole, FinishReason, RoutingStrategy, TokenUsage } from "./types";
+import type { ChatRole, FinishReason, RoutingStrategy } from "./types";
 
 /** One message in the conversation. `id` is client-generated for reconciliation. */
 export interface ChatTurn {
@@ -48,10 +48,28 @@ export interface ChatStreamError {
   readonly detail: string | null;
 }
 
+/**
+ * A completed usage reading, as reported by the provider.
+ *
+ * All three counts are required. A partial reading is sent as `null` rather than
+ * with holes, so the client never renders "1,204 output" with an implied zero
+ * input and calls it a total.
+ */
+export interface ChatUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly totalTokens: number;
+}
+
 export type ChatStreamEvent =
   | { readonly type: "meta"; readonly model: ChatStreamMeta }
   | { readonly type: "delta"; readonly text: string }
-  | { readonly type: "done"; readonly finishReason: FinishReason; readonly usage: TokenUsage | null }
+  | {
+      readonly type: "done";
+      readonly finishReason: FinishReason;
+      /** `null` when the provider reported no usage for this response. */
+      readonly usage: ChatUsage | null;
+    }
   | { readonly type: "error"; readonly error: ChatStreamError };
 
 /**
@@ -77,6 +95,28 @@ export const ERROR_STATUS: Readonly<Record<AiErrorCode, number>> = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Reads a completed usage frame.
+ *
+ * Requires all three counts. A frame missing any of them is treated as no usage
+ * at all, because a total assembled from partial numbers would overstate what
+ * the provider actually reported.
+ */
+function readChatUsage(value: unknown): ChatUsage | null {
+  if (!isRecord(value)) return null;
+  const inputTokens = value["inputTokens"];
+  const outputTokens = value["outputTokens"];
+  const totalTokens = value["totalTokens"];
+  if (
+    typeof inputTokens !== "number" ||
+    typeof outputTokens !== "number" ||
+    typeof totalTokens !== "number"
+  ) {
+    return null;
+  }
+  return { inputTokens, outputTokens, totalTokens };
 }
 
 /**
@@ -113,11 +153,10 @@ export function parseChatStreamEvent(value: unknown): ChatStreamEvent | null {
 
   if (type === "done") {
     const finishReason = value["finishReason"];
-    const usage = value["usage"];
     return {
       type: "done",
       finishReason: typeof finishReason === "string" ? (finishReason as FinishReason) : "stop",
-      usage: isRecord(usage) ? (usage as unknown as TokenUsage) : null,
+      usage: readChatUsage(value["usage"]),
     };
   }
 

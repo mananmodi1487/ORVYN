@@ -88,6 +88,8 @@ describe("createGatewayProviders", () => {
             supportsStreaming: true,
             supportsSystemPrompt: true,
           },
+          // Free-only routing requires a price we can check, not just a claim.
+          pricing: { tier: "free", inputPerMillionTokens: 0, outputPerMillionTokens: 0 },
         },
       ]),
     });

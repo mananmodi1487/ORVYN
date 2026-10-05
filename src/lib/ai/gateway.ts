@@ -159,6 +159,42 @@ export class AiGateway {
     return { model: chosen.model, candidates: eligible };
   }
 
+  /**
+   * Every eligible model, best first.
+   *
+   * `select` answers "which one" for a single-shot call. This answers "in what
+   * order should we try them", which is what a caller needs in order to fall
+   * back when a provider times out or rate-limits: the list is the ranked
+   * preference order, so a retry is always the next-best model rather than an
+   * arbitrary one.
+   *
+   * Eligibility is resolved once, here. A caller walking this list must not
+   * re-probe the catalog between attempts — re-probing would hide the failure it
+   * is trying to route around.
+   *
+   * @throws AiProviderError `NO_ELIGIBLE_MODEL` when nothing is eligible.
+   */
+  async rankedCandidates(
+    request: ChatRequest,
+    policy?: EligibilityPolicy,
+  ): Promise<readonly ModelDescriptor[]> {
+    const base = policy ?? this.#policy;
+    const effective = policyForRequest(request, base);
+    const catalog = await this.catalog(effective);
+
+    if (request.pinnedModel !== undefined) {
+      // A pinned request has exactly one permitted target, so returning it as a
+      // single-element list lets fallback code stay uniform without ever
+      // substituting a different model behind the caller's back.
+      return [this.#selectPinned(request, catalog, catalog.eligible, effective).model];
+    }
+
+    const strategy: RoutingStrategy = request.strategy ?? "balanced";
+    return rankCandidates(catalog.eligible, strategy, request, catalog.health).map(
+      (candidate) => candidate.model,
+    );
+  }
+
   async generate(request: ChatRequest, policy?: EligibilityPolicy): Promise<GenerationResult> {
     const { model } = await this.select(request, policy);
     const provider = this.#requireProvider(model.provider);

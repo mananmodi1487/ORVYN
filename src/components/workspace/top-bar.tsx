@@ -15,12 +15,12 @@ export type TopBarProps = {
 
 export function TopBar({ mode, onModeChange, onOpenDrawer, triggerRef }: TopBarProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-canvas px-3 sm:px-4">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-canvas/85 px-4 backdrop-blur-sm sm:px-6">
       <Button
         ref={triggerRef}
         variant="ghost"
-        size="icon"
-        className="lg:hidden"
+        size="icon-sm"
+        className="-ml-1.5 lg:hidden"
         onClick={onOpenDrawer}
         aria-label="Open navigation"
         aria-controls="orvyn-sidebar"
@@ -28,22 +28,22 @@ export function TopBar({ mode, onModeChange, onOpenDrawer, triggerRef }: TopBarP
         <MenuIcon />
       </Button>
 
-      <p className="hidden truncate text-sm text-ink-muted lg:block">New conversation</p>
+      <p className="hidden truncate text-[13px] text-ink-subtle lg:block">New conversation</p>
 
       <div className="ml-auto flex items-center gap-2">
         <ModeSegmented mode={mode} onChange={onModeChange} className="hidden sm:flex" />
 
-        <Badge variant="accent" className="sm:hidden">
+        <Badge variant="outline" className="sm:hidden">
           {getResponseMode(mode).label}
         </Badge>
 
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           title={missionView.description}
-          className="px-2 sm:px-3"
+          className="text-ink-muted"
         >
-          <UsersIcon />
+          <UsersIcon className="size-3.5" />
           <span className="hidden sm:inline">{missionView.label}</span>
           <span className="sr-only sm:hidden">{missionView.label}</span>
         </Button>

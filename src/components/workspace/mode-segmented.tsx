@@ -13,7 +13,7 @@ export function ModeSegmented({ mode, onChange, className }: ModeSegmentedProps)
   return (
     <fieldset
       className={cn(
-        "flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5",
+        "flex items-center gap-0.5 rounded-md border border-line bg-surface-inset p-0.5",
         className,
       )}
     >
@@ -30,11 +30,11 @@ export function ModeSegmented({ mode, onChange, className }: ModeSegmentedProps)
           />
           <span
             className={cn(
-              "flex h-7 cursor-pointer items-center rounded-md px-2.5 text-xs font-medium",
+              "flex h-7 cursor-pointer items-center rounded-[5px] px-2.5 text-xs font-medium",
               "text-ink-subtle transition-colors duration-150",
-              "peer-checked:bg-active peer-checked:text-ink",
+              "peer-checked:bg-ink peer-checked:text-canvas",
               "peer-focus-visible:outline peer-focus-visible:outline-2",
-              "peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent",
+              "peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink",
             )}
           >
             {getResponseMode(id).label}

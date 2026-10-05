@@ -7,16 +7,31 @@ import {
   type ChatStreamEvent,
   type ChatStreamMeta,
   type ChatTurn,
+  type ChatUsage,
 } from "@/lib/ai/chat-protocol";
+import { sumUsage } from "@/lib/ai/usage";
 
 const ENDPOINT = "/api/chat";
 
+/**
+ * A turn in the rendered conversation.
+ *
+ * `usage` exists only on assistant turns and only when the provider actually
+ * reported it. It is never filled in locally: a turn without the field means the
+ * upstream gave ORVYN no numbers, which the UI states rather than approximates.
+ */
+export interface ConversationTurn extends ChatTurn {
+  readonly usage?: ChatUsage | undefined;
+}
+
 export type UseConversation = {
-  readonly turns: readonly ChatTurn[];
+  readonly turns: readonly ConversationTurn[];
   readonly isStreaming: boolean;
   readonly error: ChatStreamError | null;
   /** The model the gateway actually selected, once the first frame arrives. */
   readonly activeModel: ChatStreamMeta | null;
+  /** Running sum of every reported reading in this conversation. */
+  readonly conversationUsage: ChatUsage | null;
   send: (text: string) => void;
   stop: () => void;
   reset: () => void;
@@ -36,15 +51,15 @@ export type UseConversation = {
  * generation upstream instead of discarding tokens after paying for them.
  */
 export function useConversation(): UseConversation {
-  const [turns, setTurns] = useState<readonly ChatTurn[]>([]);
+  const [turns, setTurns] = useState<readonly ConversationTurn[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<ChatStreamError | null>(null);
   const [activeModel, setActiveModel] = useState<ChatStreamMeta | null>(null);
 
-  const turnsRef = useRef<ChatTurn[]>([]);
+  const turnsRef = useRef<ConversationTurn[]>([]);
   const controllerRef = useRef<AbortController | null>(null);
 
-  const commit = useCallback((next: ChatTurn[]) => {
+  const commit = useCallback((next: ConversationTurn[]) => {
     turnsRef.current = next;
     setTurns(next);
   }, []);
@@ -57,7 +72,7 @@ export function useConversation(): UseConversation {
       if (text === "" || controllerRef.current !== null) return;
 
       const assistantId = newId();
-      const history: ChatTurn[] = [...turnsRef.current, { id: newId(), role: "user", text }];
+      const history: ConversationTurn[] = [...turnsRef.current, { id: newId(), role: "user", text }];
       const controller = new AbortController();
 
       controllerRef.current = controller;
@@ -69,10 +84,13 @@ export function useConversation(): UseConversation {
       // The assistant turn is always last while streaming, so the growing answer
       // is rewritten in place instead of appending a turn per token.
       let answer = "";
-      const writeAnswer = (value: string) => {
-        answer = value;
+      let usage: ChatUsage | null = null;
+      const rewrite = () => {
         const current = turnsRef.current;
-        commit([...current.slice(0, -1), { id: assistantId, role: "assistant", text: value }]);
+        commit([
+          ...current.slice(0, -1),
+          { id: assistantId, role: "assistant", text: answer, ...(usage === null ? {} : { usage }) },
+        ]);
       };
       /** A failed or cancelled turn leaves nothing behind when no text arrived. */
       const dropEmptyAnswer = () => {
@@ -82,8 +100,15 @@ export function useConversation(): UseConversation {
       void runRequest({
         history,
         controller,
-        onDelta: (delta) => writeAnswer(answer + delta),
+        onDelta: (delta) => {
+          answer += delta;
+          rewrite();
+        },
         onMeta: (model) => setActiveModel(model),
+        onUsage: (reported) => {
+          usage = reported;
+          rewrite();
+        },
       })
         .then((failure) => {
           dropEmptyAnswer();
@@ -125,7 +150,35 @@ export function useConversation(): UseConversation {
     commit([]);
   }, [commit]);
 
-  return { turns, isStreaming, error, activeModel, send, stop, reset };
+  return {
+    turns,
+    isStreaming,
+    error,
+    activeModel,
+    conversationUsage: sumConversationUsage(turns),
+    send,
+    stop,
+    reset,
+  };
+}
+
+/**
+ * Totals every reading the providers actually reported in this conversation.
+ *
+ * Returns `null` until at least one response reported usage, so an empty or
+ * entirely unreported conversation shows "unavailable" rather than a confident 0.
+ */
+function sumConversationUsage(turns: readonly ConversationTurn[]): ChatUsage | null {
+  const readings = turns
+    .map((turn) => turn.usage)
+    .filter((usage): usage is ChatUsage => usage !== undefined);
+  if (readings.length === 0) return null;
+
+  const summed = sumUsage(readings);
+  if (summed.inputTokens === null || summed.outputTokens === null) return null;
+
+  const total = summed.inputTokens + summed.outputTokens;
+  return { inputTokens: summed.inputTokens, outputTokens: summed.outputTokens, totalTokens: total };
 }
 
 /**
@@ -136,14 +189,17 @@ export function useConversation(): UseConversation {
  * Only a transport failure rejects, and the caller reports that separately.
  */
 async function runRequest(input: {
-  readonly history: readonly ChatTurn[];
+  readonly history: readonly ConversationTurn[];
   readonly controller: AbortController;
   readonly onDelta: (text: string) => void;
   readonly onMeta: (model: ChatStreamMeta) => void;
+  readonly onUsage: (usage: ChatUsage | null) => void;
 }): Promise<ChatStreamError | null> {
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    // Only the message itself is sent. Usage is a server-side accounting
+    // concern and is never accepted back from the client.
     body: JSON.stringify({
       turns: input.history.map(({ id, role, text }) => ({ id, role, text })),
     }),
@@ -164,6 +220,7 @@ async function runRequest(input: {
   await readFrames(response.body, (event) => {
     if (event.type === "delta") input.onDelta(event.text);
     else if (event.type === "meta") input.onMeta(event.model);
+    else if (event.type === "done") input.onUsage(event.usage);
     else if (event.type === "error") failure = event.error;
   });
   return failure;

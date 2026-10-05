@@ -89,3 +89,23 @@ export const conversationEmptyState = {
   title: "No conversations yet",
   description: "Start one and it will appear here.",
 } as const;
+
+/**
+ * Token-usage copy.
+ *
+ * `unavailable` is a first-class state, not a fallback: ORVYN reports what a
+ * provider returned and says so plainly when a provider returned nothing. The
+ * pool wording deliberately describes ORVYN's own budget rather than implying
+ * upstream capacity exists.
+ */
+export const usageCopy = {
+  input: "input",
+  output: "output",
+  total: "total",
+  unavailable: "usage unavailable",
+  conversation: "This conversation",
+  today: "Your today",
+  pool: "ORVYN free pool",
+  poolNote: "ORVYN's monthly target. Not guaranteed upstream capacity.",
+  unavailablePool: "Free-pool usage unavailable",
+} as const;

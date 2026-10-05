@@ -18,14 +18,18 @@
  *   from `toChatStreamError`, so the client parses exactly one shape either way.
  */
 import { parseChatRequest } from "@/lib/ai/chat-request";
-import { ERROR_STATUS, type ChatStreamError, type ChatStreamEvent } from "@/lib/ai/chat-protocol";
 import {
-  selectChatModel,
-  streamChatEvents,
-  toChatStreamError,
-} from "@/lib/ai/chat-service";
-import { invalidRequest } from "@/lib/ai/errors";
+  ERROR_STATUS,
+  type ChatStreamError,
+  type ChatStreamEvent,
+  type ChatStreamMeta,
+  type ChatUsage,
+} from "@/lib/ai/chat-protocol";
+import { streamChatEvents, toChatStreamError } from "@/lib/ai/chat-service";
+import { NO_FREE_MODEL_DETAIL } from "@/lib/ai/eligibility";
+import { invalidRequest, noEligibleModel } from "@/lib/ai/errors";
 import { getAiGateway } from "@/lib/ai/runtime";
+import { recordUsage } from "@/lib/ai/usage-store";
 
 /** Credentials and `fetch` semantics here are Node's, not the edge's. */
 export const runtime = "nodejs";
@@ -51,20 +55,31 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const chatRequest = parseChatRequest(await readJsonBody(request));
     const gateway = getAiGateway();
-    // Selection happens here, not lazily inside the generator. By this point no
-    // bytes have been sent, so "no model is configured" can still be reported as
-    // a 503 instead of a 200 with the failure hidden in the body.
-    const model = await selectChatModel(gateway, chatRequest);
-    events = streamChatEvents(gateway, model, chatRequest, { signal: request.signal });
+    // Resolving candidates happens here, not lazily inside the generator. By
+    // this point no bytes have been sent, so "no free model is configured" can
+    // still be reported as a 503 instead of a 200 with the failure in the body.
+    // The whole ranked list is passed on so a provider failure can fall through
+    // to the next-best free model.
+    const candidates = await gateway.rankedCandidates(chatRequest);
+    if (candidates.length === 0) throw noEligibleModel(NO_FREE_MODEL_DETAIL);
+    events = streamChatEvents(gateway, candidates, chatRequest, { signal: request.signal });
   } catch (cause) {
     return errorResponse(toChatStreamError(cause));
   }
 
   const encoder = new TextEncoder();
+  let served: ChatStreamMeta | null = null;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
         for await (const event of events) {
+          // The serving model is only known once routing commits, which is what
+          // the usage row must be attributed to.
+          if (event.type === "meta") served = event.model;
+          if (event.type === "done" && event.usage !== null && served !== null) {
+            void recordCompletedUsage(served, event.usage);
+          }
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         }
       } catch (cause) {
@@ -94,6 +109,26 @@ export async function POST(request: Request): Promise<Response> {
     status: 200,
     headers: { ...NO_STORE_HEADERS, "Content-Type": "application/x-ndjson; charset=utf-8" },
   });
+}
+
+/**
+ * Persists a completed response's provider-reported usage.
+ *
+ * Deliberately not awaited: the answer has already streamed, and failing it
+ * because a bookkeeping row could not be written would trade a real answer for a
+ * counter. Failures are swallowed for the same reason.
+ */
+async function recordCompletedUsage(model: ChatStreamMeta, usage: ChatUsage): Promise<void> {
+  try {
+    await recordUsage({
+      provider: model.provider,
+      modelId: model.modelId,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+    });
+  } catch {
+    // Usage accounting must never break a completed generation.
+  }
 }
 
 /**

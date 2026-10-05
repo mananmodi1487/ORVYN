@@ -40,6 +40,12 @@ export interface FakeProvider extends AiProvider {
   };
 }
 
+/**
+ * Defaults describe a free model, because that is what the default policy
+ * allows. A test that needs a paid or unpriced model passes `pricing` itself,
+ * which keeps the "paid is never eligible" default from silently emptying the
+ * candidate set in unrelated tests.
+ */
 export function makeModel(
   overrides: Partial<ModelDescriptor> & { provider: ProviderId; modelId: string },
 ): ModelDescriptor {
@@ -52,9 +58,9 @@ export function makeModel(
     enabled: overrides.enabled ?? true,
     pricing: overrides.pricing ?? {
       currency: "USD",
-      tier: "paid",
-      inputPerMillionTokens: 1,
-      outputPerMillionTokens: 2,
+      tier: "free",
+      inputPerMillionTokens: 0,
+      outputPerMillionTokens: 0,
     },
     context: overrides.context ?? {
       contextWindowTokens: 128_000,

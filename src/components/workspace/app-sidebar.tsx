@@ -8,8 +8,11 @@ import {
   conversationEmptyState,
   conversationsSection,
   sidebarNav,
+  usageCopy,
   type SidebarNavId,
 } from "@/config/workspace";
+import type { UseAccountUsage } from "@/lib/hooks";
+import { formatTokens } from "@/lib/ai/usage";
 import { cn } from "@/lib/utils";
 import {
   BrandMark,
@@ -22,6 +25,7 @@ import {
   type IconProps,
 } from "./icons";
 import { SidebarNavItem } from "./sidebar-nav-item";
+import { UsageMeter } from "./usage-meter";
 
 const navIcons: Readonly<Record<SidebarNavId, ComponentType<IconProps>>> = {
   universe: UniverseIcon,
@@ -34,6 +38,7 @@ export type AppSidebarProps = {
   onCloseDrawer: () => void;
   onNavigate: () => void;
   onNewConversation: () => void;
+  usage: UseAccountUsage;
 };
 
 export function AppSidebar({
@@ -42,19 +47,22 @@ export function AppSidebar({
   onCloseDrawer,
   onNavigate,
   onNewConversation,
+  usage,
 }: AppSidebarProps) {
+  const today = usage.summary?.userDaily ?? null;
+
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
+    <div className="flex h-full min-h-0 flex-col bg-canvas">
       <div
         className={cn(
-          "flex h-14 shrink-0 items-center gap-2.5 px-3",
+          "flex h-14 shrink-0 items-center gap-2.5 px-4",
           collapsed && "lg:justify-center lg:px-0",
         )}
       >
-        <BrandMark className="size-6 shrink-0 text-accent" />
+        <BrandMark className="size-5 shrink-0 text-ink" />
         <span
           className={cn(
-            "truncate text-sm font-semibold tracking-tight text-ink",
+            "truncate text-[13px] font-semibold tracking-[0.14em] text-ink uppercase",
             collapsed && "lg:hidden",
           )}
         >
@@ -71,13 +79,13 @@ export function AppSidebar({
         </Button>
       </div>
 
-      <div className={cn("shrink-0 px-3 pb-4", collapsed && "lg:px-2")}>
+      <div className={cn("shrink-0 px-3 pb-5", collapsed && "lg:px-2")}>
         <Button
-          variant="primary"
+          variant="outline"
           onClick={onNewConversation}
           aria-label="New conversation"
           title={collapsed ? "New conversation" : undefined}
-          className={cn("w-full", collapsed && "lg:px-0")}
+          className={cn("w-full justify-start", collapsed && "lg:justify-center lg:px-0")}
         >
           <PlusIcon />
           <span className={cn(collapsed && "lg:hidden")}>New conversation</span>
@@ -86,28 +94,28 @@ export function AppSidebar({
 
       <nav
         aria-label="Workspace"
-        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3"
+        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4"
       >
         <div className="flex flex-col">
           <p
             className={cn(
-              "px-2.5 pt-1 pb-2 text-xs font-medium text-ink-subtle",
+              "px-2 pt-1 pb-2.5 text-[11px] font-medium tracking-[0.08em] text-ink-subtle uppercase",
               collapsed && "lg:hidden",
             )}
           >
             {conversationsSection.label}
           </p>
-          <p className={cn("px-2.5 text-xs text-ink-subtle", collapsed && "lg:hidden")}>
+          <p className={cn("px-2 text-[13px] text-ink-muted", collapsed && "lg:hidden")}>
             {conversationEmptyState.title}
           </p>
           <p
-            className={cn("mt-0.5 px-2.5 text-xs text-ink-subtle/70", collapsed && "lg:hidden")}
+            className={cn("mt-0.5 px-2 text-xs leading-relaxed text-ink-subtle", collapsed && "lg:hidden")}
           >
             {conversationEmptyState.description}
           </p>
         </div>
 
-        <div className="mt-3 flex flex-col gap-0.5">
+        <div className="mt-4 flex flex-col gap-0.5">
           {sidebarNav.map((item) => (
             <SidebarNavItem
               key={item.id}
@@ -121,23 +129,28 @@ export function AppSidebar({
         </div>
       </nav>
 
-      <div className="shrink-0 border-t border-line p-2">
+      <div className="shrink-0 border-t border-line p-3">
+        <UsageMeter usage={usage} collapsed={collapsed} />
+
         <button
           type="button"
           aria-label={account.name}
           title={collapsed ? account.name : undefined}
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left",
+            "mt-2 flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left",
             "transition-colors duration-150 hover:bg-hover",
             collapsed && "lg:justify-center lg:px-0",
           )}
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-full border border-line bg-surface-raised text-ink-subtle">
-            <UserIcon className="size-3.5" />
+          <span className="grid size-6 shrink-0 place-items-center rounded-full border border-line text-ink-subtle">
+            <UserIcon className="size-3" />
           </span>
           <span className={cn("flex min-w-0 flex-col", collapsed && "lg:hidden")}>
-            <span className="truncate text-sm text-ink">{account.name}</span>
-            <span className="truncate text-xs text-ink-subtle">{account.status}</span>
+            <span className="truncate text-[13px] text-ink">{account.name}</span>
+            <span className="truncate text-[11px] text-ink-subtle">{account.status}</span>
+          </span>
+          <span className={cn("sr-only", today !== null && "not-sr-only")}>
+            {today === null ? usageCopy.unavailable : formatTokens(today.totalTokens)}
           </span>
         </button>
 
@@ -149,18 +162,18 @@ export function AppSidebar({
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className={cn(
-            "mt-1 hidden w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm lg:flex",
+            "mt-1 hidden w-full items-center gap-3 rounded-md px-2 py-2 text-[13px] lg:flex",
             "text-ink-subtle transition-colors duration-150 hover:bg-hover hover:text-ink",
             collapsed && "lg:justify-center lg:px-0",
           )}
         >
           <PanelCollapseIcon
             className={cn(
-              "size-4 shrink-0 transition-transform duration-200",
+              "size-3.5 shrink-0 transition-transform duration-200",
               collapsed && "rotate-180",
             )}
           />
-          <span className={cn("truncate", collapsed && "lg:hidden")}>Collapse sidebar</span>
+          <span className={cn("truncate", collapsed && "lg:hidden")}>Collapse</span>
         </button>
       </div>
     </div>

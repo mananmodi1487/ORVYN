@@ -12,21 +12,23 @@ export function WelcomePanel({ onSelectPrompt }: WelcomePanelProps) {
   return (
     <section
       aria-labelledby="orvyn-welcome-heading"
-      className="flex min-h-full flex-col items-center justify-center gap-9 px-4 py-14 text-center sm:py-20"
+      className="flex min-h-full flex-col items-center justify-center gap-12 px-5 py-16 sm:py-24"
     >
-      <BrandMark className="size-14 text-accent" />
+      <div className="flex flex-col items-center gap-5 text-center">
+        <BrandMark className="size-7 text-ink-subtle" />
 
-      <div className="flex flex-col gap-3">
-        <h1
-          id="orvyn-welcome-heading"
-          className="text-3xl font-semibold tracking-tight text-balance text-ink sm:text-4xl"
-        >
-          {brand.greeting}
-        </h1>
-        <p className="text-base text-ink-muted">{brand.tagline}</p>
+        <div className="flex flex-col gap-2.5">
+          <h1
+            id="orvyn-welcome-heading"
+            className="text-[26px] leading-tight font-medium tracking-[-0.02em] text-balance text-ink sm:text-[30px]"
+          >
+            {brand.greeting}
+          </h1>
+          <p className="text-[15px] leading-relaxed text-ink-muted">{brand.tagline}</p>
+        </div>
       </div>
 
-      <ul className="grid w-full max-w-3xl gap-3 sm:grid-cols-3">
+      <ul className="grid w-full max-w-3xl gap-2.5 sm:grid-cols-3">
         {welcomeSuggestions.map((suggestion) => (
           <li key={suggestion.id} className="flex">
             <SuggestionCard suggestion={suggestion} onSelect={onSelectPrompt} />

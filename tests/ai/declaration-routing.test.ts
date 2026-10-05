@@ -20,11 +20,19 @@ import { createFakeProvider, healthy } from "./fixtures/fake-provider";
 
 const request: ChatRequest = { messages: [{ role: "user", content: "hi" }] };
 
+/**
+ * Declarations are passed through verbatim: a declaration that omits `pricing`
+ * is unpriced, and the free-only gate must be able to see that. Tests that are
+ * not about pricing declare `FREE_PRICING` themselves.
+ */
 function declarationsFrom(inputs: readonly unknown[]): DeclarationSet {
   const result = validateDeclarationDocument(inputs);
   if (!result.ok) throw new Error(`fixture declarations invalid: ${formatDeclarationIssues(result.issues)}`);
   return createDeclarationSet(result.declarations);
 }
+
+/** A price ORVYN can verify is zero, which is what free-only routing requires. */
+const FREE_PRICING = { tier: "free", inputPerMillionTokens: 0, outputPerMillionTokens: 0 } as const;
 
 /** Projects declarations the way a provider adapter does. */
 function project(set: DeclarationSet, provider: string, modelIds: readonly string[]): readonly ModelDescriptor[] {
@@ -171,6 +179,7 @@ it("keeps a vision model eligible because it still answers text", async () => {
       modelId: "vision",
       enabled: true,
       availability: "available",
+      pricing: FREE_PRICING,
       capabilities: {
         inputModalities: ["text", "image"],
         outputModalities: ["text"],
@@ -191,6 +200,7 @@ it("excludes a text model from a streaming request when it cannot stream", async
       modelId: "m",
       enabled: true,
       availability: "available",
+      pricing: FREE_PRICING,
       capabilities: { ...textChatCapabilities(), supportsStreaming: false },
     },
   ]);
@@ -284,6 +294,7 @@ describe("disabled models", () => {
         enabled: true,
         priority: 0,
         availability: "available",
+        pricing: FREE_PRICING,
         capabilities: textChatCapabilities(),
       },
     ]);
@@ -372,15 +383,63 @@ describe("cost policy", () => {
     void gateway;
   });
 
-  it("keeps an unpriced model eligible — unknown price is not a paid model", async () => {
+  it("rejects an unpriced model under a free-only policy", async () => {
+    // ORVYN is free-only, and an unpublished price is not evidence of a free
+    // one. Requiring both rates at 0 is what makes "never charge anything"
+    // checkable rather than trusted.
     const models = project(declarationsFrom(priced), "omniroute", ["unpriced"]);
     const catalog = await gatewayFor(models).gateway.catalog({
       ...DEFAULT_ELIGIBILITY_POLICY,
       allowPaidModels: false,
     });
+    assert.deepEqual(catalog.eligible, []);
     assert.deepEqual(
-      catalog.eligible.map((model) => model.modelId),
-      ["unpriced"],
+      catalog.excluded.map((entry) => [entry.model.modelId, entry.reason]),
+      [["unpriced", "unknown-pricing"]],
+    );
+  });
+
+  it("rejects a model that claims the free tier without publishing zero rates", async () => {
+    const set = declarationsFrom([
+      {
+        provider: "omniroute",
+        modelId: "claimed",
+        enabled: true,
+        availability: "available",
+        pricing: { tier: "free" },
+        capabilities: textChatCapabilities(),
+      },
+    ]);
+    const catalog = await gatewayFor(project(set, "omniroute", ["claimed"])).gateway.catalog({
+      ...DEFAULT_ELIGIBILITY_POLICY,
+      allowPaidModels: false,
+    });
+    assert.deepEqual(catalog.eligible, []);
+    assert.deepEqual(
+      catalog.excluded.map((entry) => entry.reason),
+      ["unknown-pricing"],
+    );
+  });
+
+  it("rejects a free-tier model with a non-zero rate", async () => {
+    const set = declarationsFrom([
+      {
+        provider: "omniroute",
+        modelId: "metered",
+        enabled: true,
+        availability: "available",
+        pricing: { tier: "free", inputPerMillionTokens: 0, outputPerMillionTokens: 0.5 },
+        capabilities: textChatCapabilities(),
+      },
+    ]);
+    const catalog = await gatewayFor(project(set, "omniroute", ["metered"])).gateway.catalog({
+      ...DEFAULT_ELIGIBILITY_POLICY,
+      allowPaidModels: false,
+    });
+    assert.deepEqual(catalog.eligible, []);
+    assert.deepEqual(
+      catalog.excluded.map((entry) => entry.reason),
+      ["unknown-pricing"],
     );
   });
 

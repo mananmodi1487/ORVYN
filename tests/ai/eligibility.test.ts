@@ -142,7 +142,41 @@ describe("evaluateModelEligibility", () => {
 
   it("rejects a paid model under a free-only policy", () => {
     const policy: EligibilityPolicy = { ...DEFAULT_ELIGIBILITY_POLICY, allowPaidModels: false };
-    const decision = evaluateModelEligibility(makeModel({ provider: "p", modelId: "m1" }), states({ p: up }), policy);
+    const model = makeModel({
+      provider: "p",
+      modelId: "m1",
+      pricing: { currency: "USD", tier: "paid", inputPerMillionTokens: 1, outputPerMillionTokens: 2 },
+    });
+    const decision = evaluateModelEligibility(model, states({ p: up }), policy);
+    assert.equal(decision.reason, "paid-not-allowed");
+  });
+
+  it("rejects an unknown-priced model under a free-only policy", () => {
+    const policy: EligibilityPolicy = { ...DEFAULT_ELIGIBILITY_POLICY, allowPaidModels: false };
+    const model = makeModel({
+      provider: "p",
+      modelId: "m1",
+      pricing: {
+        currency: "USD",
+        tier: "unknown",
+        inputPerMillionTokens: null,
+        outputPerMillionTokens: null,
+      },
+    });
+    const decision = evaluateModelEligibility(model, states({ p: up }), policy);
+    assert.equal(decision.reason, "unknown-pricing");
+  });
+
+  it("rejects a paid model under the default policy, with no opt-in", () => {
+    // The safe policy is the one that applies when nobody configured anything,
+    // so free-only must not require an operator to remember to set it.
+    const model = makeModel({
+      provider: "p",
+      modelId: "m1",
+      pricing: { currency: "USD", tier: "paid", inputPerMillionTokens: 10, outputPerMillionTokens: 20 },
+    });
+    const decision = evaluateModelEligibility(model, states({ p: up }), DEFAULT_ELIGIBILITY_POLICY);
+    assert.equal(decision.eligible, false);
     assert.equal(decision.reason, "paid-not-allowed");
   });
 

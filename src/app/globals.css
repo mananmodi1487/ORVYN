@@ -1,13 +1,18 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   ORVYN design tokens — dark-first
+   ORVYN design tokens — restrained monochrome
 
    ORVYN is a dark product, not a dark variant. The canvas is near-black and the
    only light palette lives in the `:root` block below, so nothing depends on
-   `prefers-color-scheme` and there is no flash of the wrong theme. Adding a
-   light theme later means overriding these variables in a `.light` scope; no
-   component changes.
+   `prefers-color-scheme` and there is no flash of the wrong theme.
+
+   The palette is achromatic by design. Every token below is a neutral on a
+   single hue axis with near-zero chroma, so emphasis comes from spacing,
+   weight and contrast rather than from colour. There is no accent hue to lean
+   on: `--accent` is a light neutral used for the primary action and for focus
+   rings, and nothing else in the product may introduce a hue. The single
+   exception is `--danger`, which has to stay recognisable as an error.
 
    `@theme inline` maps the variables into Tailwind's utility namespace
    (bg-canvas, text-ink, border-line, text-accent, ...). Components must use
@@ -17,36 +22,37 @@
 :root {
   color-scheme: dark;
 
-  --radius: 0.75rem;
+  --radius: 0.625rem;
 
-  /* Depth stack, darkest to lightest */
-  --canvas: oklch(0.152 0.006 285);
-  --surface: oklch(0.192 0.007 285);
-  --surface-raised: oklch(0.226 0.008 285);
-  --surface-inset: oklch(0.125 0.006 285);
+  /* Depth stack, darkest to lightest. Wider gaps than a colourful system needs:
+     with no hue to separate surfaces, luminance has to do the work. */
+  --canvas: oklch(0.145 0.002 285);
+  --surface: oklch(0.178 0.002 285);
+  --surface-raised: oklch(0.215 0.002 285);
+  --surface-inset: oklch(0.118 0.002 285);
 
   /* Typography */
-  --ink: oklch(0.972 0.002 285);
-  --ink-muted: oklch(0.702 0.013 285);
-  --ink-subtle: oklch(0.548 0.013 285);
+  --ink: oklch(0.975 0 0);
+  --ink-muted: oklch(0.688 0.002 285);
+  --ink-subtle: oklch(0.512 0.003 285);
 
-  /* Structure */
-  --line: oklch(0.278 0.009 285);
-  --line-strong: oklch(0.372 0.011 285);
+  /* Structure. Borders carry most of the layout here, so they are faint. */
+  --line: oklch(0.262 0.002 285);
+  --line-strong: oklch(0.372 0.003 285);
 
-  /* Restrained blue-violet accent */
-  --accent: oklch(0.632 0.132 276);
-  --accent-strong: oklch(0.716 0.128 276);
-  --accent-ink: oklch(0.16 0.032 276);
-  --accent-muted: oklch(0.268 0.042 276);
+  /* Primary action and focus. A light neutral, not a brand colour. */
+  --accent: oklch(0.965 0 0);
+  --accent-strong: oklch(1 0 0);
+  --accent-ink: oklch(0.16 0.002 285);
+  --accent-muted: oklch(0.262 0.002 285);
 
   /* Interaction states */
-  --hover: oklch(1 0 0 / 0.055);
-  --active: oklch(1 0 0 / 0.095);
+  --hover: oklch(1 0 0 / 0.045);
+  --active: oklch(1 0 0 / 0.075);
 
   /* Destructive */
-  --danger: oklch(0.62 0.19 25);
-  --danger-ink: oklch(0.98 0.005 25);
+  --danger: oklch(0.63 0.17 25);
+  --danger-ink: oklch(0.975 0 0);
 }
 
 @theme inline {
@@ -105,13 +111,16 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--accent);
+    /* A light ring on a dark canvas reads at every luminance step, and keeps
+       keyboard focus unmistakable without a hue. */
+    outline: 2px solid var(--ink);
     outline-offset: 2px;
+    border-radius: 2px;
   }
 
   ::selection {
-    background-color: var(--accent);
-    color: var(--accent-ink);
+    background-color: oklch(1 0 0 / 0.16);
+    color: var(--ink);
   }
 
   ::-webkit-scrollbar {
@@ -132,6 +141,12 @@
 
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--line-strong);
+  }
+
+  /* Firefox mirrors the WebKit scrollbar rules above. */
+  * {
+    scrollbar-color: var(--line) transparent;
+    scrollbar-width: thin;
   }
 }
 

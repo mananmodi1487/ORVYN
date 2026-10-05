@@ -1,4 +1,5 @@
 import { isStreamable, supportsSystemMessages, supportsTextChat } from "./capabilities";
+import { isFreeModel } from "./pricing";
 import type {
   ChatRequest,
   ModelDescriptor,
@@ -22,7 +23,11 @@ export interface ProviderState {
 export interface EligibilityPolicy {
   /** `null` allows every provider. Otherwise an explicit allowlist. */
   readonly allowedProviders: readonly ProviderId[] | null;
-  /** When false, models on the `paid` pricing tier are rejected. */
+  /**
+   * When false, only models ORVYN can prove are free are eligible. Both paid and
+   * unknown-priced models are rejected, because an unverifiable price is not
+   * evidence of a free one.
+   */
   readonly allowPaidModels: boolean;
   /** Rejects models that cannot stream. */
   readonly requireStreaming: boolean;
@@ -30,12 +35,24 @@ export interface EligibilityPolicy {
   readonly requireSystemPrompt: boolean;
 }
 
+/**
+ * Free-only, and that is the product's default rather than an opt-in.
+ *
+ * A paid model being reachable at all is the failure mode this prevents, so the
+ * safe policy must be the one that applies when nobody has configured
+ * anything. Setting `allowPaidModels` back to true is a deliberate act by an
+ * operator who accepts billing, not something a request can turn on.
+ */
 export const DEFAULT_ELIGIBILITY_POLICY: EligibilityPolicy = {
   allowedProviders: null,
-  allowPaidModels: true,
+  allowPaidModels: false,
   requireStreaming: false,
   requireSystemPrompt: false,
 };
+
+/** The policy name a client-facing failure uses when nothing free is reachable. */
+export const NO_FREE_MODEL_DETAIL =
+  "no free model is eligible: declare a model with pricing tier free and both rates at 0";
 
 export type RejectionReason =
   | "provider-not-registered"
@@ -47,7 +64,8 @@ export type RejectionReason =
   | "no-text-chat"
   | "streaming-unsupported"
   | "system-prompt-unsupported"
-  | "paid-not-allowed";
+  | "paid-not-allowed"
+  | "unknown-pricing";
 
 export interface EligibilityDecision {
   readonly eligible: boolean;
@@ -92,7 +110,12 @@ export function evaluateModelEligibility(
   if (policy.requireSystemPrompt && !supportsSystemMessages(model.capabilities)) {
     return reject("system-prompt-unsupported");
   }
-  if (!policy.allowPaidModels && model.pricing.tier === "paid") return reject("paid-not-allowed");
+  // Free-only is enforced here rather than in the router, so a paid or
+  // unverifiable model is never a candidate at all. Ranking preferences cannot
+  // promote something that was excluded.
+  if (!policy.allowPaidModels && !isFreeModel(model.pricing)) {
+    return reject(model.pricing.tier === "paid" ? "paid-not-allowed" : "unknown-pricing");
+  }
 
   return ELIGIBLE;
 }

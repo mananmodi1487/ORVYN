@@ -12,10 +12,13 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-ink text-canvas hover:bg-ink/90",
+        // White on near-black. The one high-contrast surface in the product,
+        // reserved for the primary action so it stays the only thing that
+        // shouts.
+        primary: "bg-ink text-canvas hover:bg-ink/88 active:bg-ink/80",
         accent: "bg-accent text-accent-ink hover:bg-accent-strong",
-        secondary: "bg-surface-raised text-ink hover:bg-line-strong/60",
-        outline: "border border-line text-ink hover:bg-hover",
+        secondary: "bg-surface-raised text-ink hover:bg-line-strong/40",
+        outline: "border border-line text-ink hover:bg-hover hover:border-line-strong",
         ghost: "text-ink-muted hover:bg-hover hover:text-ink",
         danger: "bg-danger text-danger-ink hover:bg-danger/90",
       },

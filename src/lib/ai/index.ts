@@ -36,6 +36,7 @@ export {
 } from "./errors";
 export {
   DEFAULT_ELIGIBILITY_POLICY,
+  NO_FREE_MODEL_DETAIL,
   evaluateModelEligibility,
   isPinnedModel,
   partitionByEligibility,
@@ -83,6 +84,7 @@ export {
   costScore,
   estimateCost,
   estimateInputTokens,
+  isFreeModel,
   type CostEstimate,
 } from "./pricing";
 export type { AiProvider, AiProviderInfo } from "./provider";
