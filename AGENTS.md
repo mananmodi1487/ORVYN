@@ -19,8 +19,22 @@ src/
     ui/           design-system primitives (Button, Badge, Card, Container, Kbd)
     workspace/    the product shell — stateful, owns sidebar / mode / draft
   config/         static, typed, environment-free configuration
+  utils/supabase/ Supabase clients (browser / server), env access, updateSession
   lib/            pure helpers (`cn()`) and framework-light hooks
+  proxy.ts        Next.js 16 request entry — NOT middleware.ts
 ```
+
+## Supabase rules
+
+- Never read the secret / service-role key in application code, and never give it
+  a `NEXT_PUBLIC_` prefix; that inlines it into the browser bundle.
+- Use `@/utils/supabase/client` in Client Components, `@/utils/supabase/server` in
+  Server Components / Actions / Route Handlers. Never call the browser client
+  during server rendering.
+- Session refresh lives in `updateSession()` only. It is the sole layer that can
+  write cookies *and* the cache-control headers Supabase sends alongside them.
+- Keep `setAll` handling both parameters — dropping the `headers` argument
+  type-checks but leaks session tokens through CDN caches.
 
 ## Rules
 

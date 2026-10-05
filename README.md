@@ -85,9 +85,16 @@ orvyn/
 │   ├── config/                 static, typed, environment-free configuration
 │   │   ├── site.ts             brand name, description, locale
 │   │   └── workspace.ts        modes, suggestions, nav labels, copy
+│   ├── utils/
+│   │   └── supabase/           Supabase client helpers
+│   │       ├── env.ts          NEXT_PUBLIC_* access + configuration check
+│   │       ├── client.ts       browser client (Client Components)
+│   │       ├── server.ts       server client (RSC, Actions, Route Handlers)
+│   │       └── proxy.ts        updateSession(): cookie + cache-header refresh
 │   └── lib/
 │       ├── utils.ts            cn()
 │       └── hooks/              useMediaQuery, useIsClient
+│   └── proxy.ts                Next.js 16 request entry (formerly middleware.ts)
 ├── .editorconfig            shared formatting rules
 ├── .env.example             tracked template; real secrets live in .env.local
 ├── .gitattributes           LF normalisation, binary asset guards
@@ -186,14 +193,70 @@ compiled values: body text 18.05:1, muted text 7.40:1, subtle text 5.10:1, accen
 Any `className` a caller can extend is merged with `cn()` from `@/lib/utils` (clsx +
 tailwind-merge), so callers can override variants safely.
 
-Any `className` a caller can extend is merged with `cn()` from `@/lib/utils` (clsx +
-tailwind-merge), so callers can override variants safely.
+## Supabase
+
+The Supabase foundation is installed and wired, but **nothing consumes it yet** — no authentication,
+no database tables, no data access, no mock data. The UI is unchanged by it.
+
+| File | Purpose |
+| ---- | ------- |
+| `src/utils/supabase/env.ts` | reads the two `NEXT_PUBLIC_*` values; `isSupabaseConfigured()` and `getSupabaseEnv()` |
+| `src/utils/supabase/client.ts` | browser client — Client Components only (reads `document.cookie`) |
+| `src/utils/supabase/server.ts` | server client — Server Components, Server Actions, Route Handlers |
+| `src/utils/supabase/proxy.ts` | `updateSession()` — cookie refresh plus Supabase's required cache headers |
+| `src/proxy.ts` | Next.js 16 request entry, exporting `proxy` |
+
+### Next.js 16 renamed `middleware.ts` to `proxy.ts`
+
+Supabase's published Next.js guide still writes `middleware.ts`. On Next.js 16 that file is ignored
+and the export must be named `proxy`. Use `src/proxy.ts`.
+
+### Why `updateSession` is in the request layer
+
+`@supabase/ssr@0.12.7` passes **two** arguments to `setAll`: the cookies and a `headers` record of
+cache-control directives. The older single-argument snippet still type-checks — a function with
+fewer parameters is assignable — so it silently drops them, and a CDN can then cache a response
+containing a session token. `updateSession` forwards both, because the proxy is the only layer with
+a writable response.
+
+There is no auth, no route protection and no data access in it. With no session, `getClaims()`
+returns immediately and the request passes through.
+
+### When Supabase is not configured
+
+`src/proxy.ts` checks `isSupabaseConfigured()` and returns `NextResponse.next()` rather than
+throwing, so the app still builds and serves traffic before `.env.local` exists. Anything that
+genuinely needs Supabase calls `getSupabaseEnv()`, which throws with an actionable message at the
+point of use.
+
+### Key handling
+
+Only the **publishable** key is read. The secret / service-role key must never be referenced from
+application code and must never carry a `NEXT_PUBLIC_` prefix — that prefix inlines the value into
+the browser bundle, which would hand full database access to every visitor.
+
+### Setup
+
+```bash
+Copy-Item .env.example .env.local   # PowerShell
+cp .env.example .env.local         # macOS / Linux
+```
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key>
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
+
+Both values come from the Supabase dashboard under **Project Settings → Data API** and
+**Project Settings → API Keys**. Restart the dev server afterwards; `NEXT_PUBLIC_*` values are
+inlined at build time, so production builds need them present when `next build` runs.
 
 ## Environment variables
 
-None are required to run, build, lint or typecheck. `.env.example` is tracked; `.env.local` and all
-other `.env*` files are gitignored. Set `NEXT_PUBLIC_SITE_URL` to override the `metadataBase` used
-for absolute URLs.
+`.env.example` is tracked; `.env.local` and all other `.env*` files are gitignored. Nothing is
+required to run, build, lint or typecheck — the app is fully functional with an empty `.env.local`.
+`NEXT_PUBLIC_SITE_URL` overrides the `metadataBase` used for absolute URLs.
 
 ## Git
 
