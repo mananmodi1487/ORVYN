@@ -1,3 +1,31 @@
 {
-  "models": []
+  "models": [
+    {
+      "provider": "groq",
+      "modelId": "llama-3.3-70b-versatile",
+      "displayName": "Llama 3.3 70B",
+      "tags": ["quality:advanced"],
+      "capabilities": {
+        "inputModalities": ["text"],
+        "outputModalities": ["text"],
+        "supportsStreaming": true,
+        "supportsSystemPrompt": true,
+        "supportsTools": true,
+        "supportsJsonOutput": true
+      },
+      "availability": "available",
+      "enabled": true,
+      "priority": 1,
+      "pricing": {
+        "tier": "free",
+        "inputPerMillionTokens": 0,
+        "outputPerMillionTokens": 0
+      },
+      "context": {
+        "contextWindowTokens": 131072,
+        "maxOutputTokens": 32768,
+        "source": "declared"
+      }
+    }
+  ]
 }

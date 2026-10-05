@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { createGatewayProviders } from "@/lib/ai/providers";
 import { DeclarationSet } from "@/lib/ai/declarations";
 import { FREELLMAPI_PROVIDER_ID } from "@/lib/ai/providers/freellm";
+import { GROQ_PROVIDER_ID } from "@/lib/ai/providers/groq";
 import { OMNIROUTE_PROVIDER_ID } from "@/lib/ai/providers/omniroute";
 import { createProviderRegistry } from "@/lib/ai/registry";
 import { AiGateway } from "@/lib/ai/gateway";
@@ -13,15 +14,15 @@ function env(values: Record<string, string>): NodeJS.ProcessEnv {
 }
 
 describe("createGatewayProviders", () => {
-  it("creates both gateways, in spec order, with no environment at all", () => {
+  it("creates all gateways, in spec order, with no environment at all", () => {
     const providers = createGatewayProviders({ env: env({ }) });
     assert.deepEqual(
       providers.map((provider) => provider.info.id),
-      ["omniroute", "freellmapi"],
+      ["omniroute", "freellmapi", "groq"],
     );
     assert.deepEqual(
       providers.map((provider) => provider.info.configured),
-      [false, false],
+      [false, false, false],
     );
   });
 
@@ -44,6 +45,19 @@ describe("createGatewayProviders", () => {
     assert.equal(free?.info.configurationDetail, null);
   });
 
+  it("marks a fully configured Groq gateway as configured and normalizes its base url", () => {
+    const providers = createGatewayProviders({
+      env: env({
+        GROQ_BASE_URL: "https://api.groq.com/openai/v1/",
+        GROQ_API_KEY: "groq-key",
+      }),
+    });
+    const groq = providers.find((provider) => provider.info.id === GROQ_PROVIDER_ID);
+    assert.equal(groq?.info.configured, true);
+    assert.equal(groq?.info.configurationDetail, null);
+    assert.equal(groq?.info.displayName, "Groq");
+  });
+
   it("ships no model declarations, so nothing is eligible until declared", async () => {
     const providers = createGatewayProviders({
       env: env({
@@ -51,6 +65,8 @@ describe("createGatewayProviders", () => {
         OMNIROUTE_API_KEY: "k",
         FREE_LLM_API_BASE_URL: "https://free.example.test/v1",
         FREE_LLM_API_KEY: "k2",
+        GROQ_BASE_URL: "https://api.groq.com/openai/v1",
+        GROQ_API_KEY: "gk",
       }),
       fetchImpl: async () =>
         new Response(JSON.stringify({ data: [{ id: "some-model" }] }), { status: 200 }),
@@ -60,12 +76,12 @@ describe("createGatewayProviders", () => {
 
     assert.deepEqual(
       catalog.entries.flatMap((entry) => entry.models.map((model) => model.modelId)),
-      ["some-model", "some-model"],
+      ["some-model", "some-model", "some-model"],
     );
     assert.deepEqual(catalog.eligible, []);
     assert.deepEqual(
       catalog.excluded.map((entry) => entry.reason),
-      ["model-disabled", "model-disabled"],
+      ["model-disabled", "model-disabled", "model-disabled"],
     );
   });
 
@@ -100,6 +116,48 @@ describe("createGatewayProviders", () => {
     assert.deepEqual(
       catalog.eligible.map((model) => `${model.provider}/${model.modelId}`),
       ["omniroute/chat"],
+    );
+  });
+
+  it("declares a Groq model and routes to it", async () => {
+    const providers = createGatewayProviders({
+      env: env({
+        GROQ_BASE_URL: "https://api.groq.com/openai/v1",
+        GROQ_API_KEY: "groq-key",
+      }),
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ data: [{ id: "llama-3.3-70b-versatile" }] }),
+          { status: 200 },
+        ),
+      declarations: new DeclarationSet([
+        {
+          provider: "groq",
+          modelId: "llama-3.3-70b-versatile",
+          enabled: true,
+          capabilities: {
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            supportsStreaming: true,
+            supportsSystemPrompt: true,
+            supportsTools: true,
+            supportsJsonOutput: true,
+          },
+          availability: "available",
+          // Free-only: both published rates must be zero, which is what makes
+          // this a free model rather than an unverifiable one.
+          pricing: { tier: "free", inputPerMillionTokens: 0, outputPerMillionTokens: 0 },
+          context: { contextWindowTokens: 131072, maxOutputTokens: 32768, source: "declared" },
+        },
+      ]),
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry(providers.filter((provider) => provider.info.configured)),
+    });
+    const catalog = await gateway.catalog();
+    assert.deepEqual(
+      catalog.eligible.map((model) => `${model.provider}/${model.modelId}`),
+      ["groq/llama-3.3-70b-versatile"],
     );
   });
 });

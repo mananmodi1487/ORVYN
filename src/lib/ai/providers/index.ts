@@ -1,5 +1,6 @@
 import { resolveAllProviderConfigs } from "../config";
 import { createFreeLlmApiProvider, FREELLMAPI_PROVIDER_ID } from "./freellm";
+import { createGroqProvider, GROQ_PROVIDER_ID } from "./groq";
 import { createOmniRouteProvider, OMNIROUTE_PROVIDER_ID } from "./omniroute";
 import { EMPTY_DECLARATION_SET, type DeclarationSet } from "../declarations";
 import type { FetchLike } from "./openai-compatible";
@@ -61,6 +62,19 @@ export function createGatewayProviders(options: CreateProvidersOptions = {}): re
       apiKey: free.ok ? free.config.apiKey : "",
       ...shared,
       declarations: declarations.forProvider(FREELLMAPI_PROVIDER_ID),
+    }),
+  );
+
+  const groq = resolved.get(GROQ_PROVIDER_ID);
+  if (groq === undefined) throw new Error("Groq env spec is missing");
+  providers.push(
+    createGroqProvider({
+      configured: groq.ok,
+      configurationDetail: groq.ok ? null : groq.reason,
+      baseUrl: groq.ok ? groq.config.baseUrl : "",
+      apiKey: groq.ok ? groq.config.apiKey : "",
+      ...shared,
+      declarations: declarations.forProvider(GROQ_PROVIDER_ID),
     }),
   );
 

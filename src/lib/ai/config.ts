@@ -10,7 +10,7 @@ import { assertServerOnly } from "./server-only";
  * which would ship every provider key to clients.
  */
 
-export const PROVIDER_IDS = ["omniroute", "freellmapi"] as const;
+export const PROVIDER_IDS = ["omniroute", "freellmapi", "groq"] as const;
 export type ConfigurableProviderId = (typeof PROVIDER_IDS)[number];
 
 export interface ProviderEnvSpec {
@@ -32,6 +32,12 @@ export const PROVIDER_ENV_SPECS: readonly ProviderEnvSpec[] = [
     displayName: "FreeLLMAPI",
     baseUrlVar: "FREE_LLM_API_BASE_URL",
     apiKeyVar: "FREE_LLM_API_KEY",
+  },
+  {
+    id: "groq",
+    displayName: "Groq",
+    baseUrlVar: "GROQ_BASE_URL",
+    apiKeyVar: "GROQ_API_KEY",
   },
 ];
 

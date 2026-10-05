@@ -18,8 +18,8 @@ function env(values: Record<string, string>): NodeJS.ProcessEnv {
 }
 
 describe("provider environment specs", () => {
-  it("covers both gateways", () => {
-    assert.deepEqual([...PROVIDER_IDS], ["omniroute", "freellmapi"]);
+  it("covers every configured gateway", () => {
+    assert.deepEqual([...PROVIDER_IDS], ["omniroute", "freellmapi", "groq"]);
   });
 
   it("names the non-public variables, so no key can be prefixed for the browser", () => {
@@ -29,6 +29,13 @@ describe("provider environment specs", () => {
       assert.equal(spec.baseUrlVar.startsWith("NEXT_PUBLIC_"), false);
       assert.equal(spec.apiKeyVar.startsWith("NEXT_PUBLIC_"), false);
     }
+  });
+
+  it("has a Groq spec pointing at the OpenAI-compatible endpoint", () => {
+    const groq = getProviderEnvSpec("groq");
+    assert.equal(groq.baseUrlVar, "GROQ_BASE_URL");
+    assert.equal(groq.apiKeyVar, "GROQ_API_KEY");
+    assert.equal(groq.displayName, "Groq");
   });
 });
 
