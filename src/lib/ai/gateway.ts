@@ -172,6 +172,12 @@ export class AiGateway {
    * re-probe the catalog between attempts — re-probing would hide the failure it
    * is trying to route around.
    *
+   * The caller also receives the models that were rejected and why. Throwing
+   * that away used to mean the only signal a caller got was "no free model is
+   * eligible", which is true in every failing configuration and useless for
+   * diagnosing one. The exclusions are computed alongside the ranking at no extra
+   * cost, so there is no reason not to hand them over.
+   *
    * @throws AiProviderError `NO_ELIGIBLE_MODEL` when nothing is eligible.
    */
   async rankedCandidates(
@@ -193,6 +199,30 @@ export class AiGateway {
     return rankCandidates(catalog.eligible, strategy, request, catalog.health).map(
       (candidate) => candidate.model,
     );
+  }
+
+  /**
+   * The models that were rejected and why, for the same request `rankedCandidates`
+   * would have considered.
+   *
+   * Split out rather than folded into `rankedCandidates`'s return type so the
+   * happy path keeps its single-shape contract. The failure path is where this
+   * matters: "no free model is eligible" is true in every broken configuration, so
+   * saying it alone is not a diagnosis. What an operator needs is the reason code
+   * for each candidate — `provider-not-configured`, `model-disabled`,
+   * `unknown-pricing`, and so on.
+   *
+   * Recomputes the catalog, which is acceptable: this is only ever called when
+   * routing has already failed, never on the happy path.
+   */
+  async catalogExclusions(
+    request: ChatRequest,
+    policy?: EligibilityPolicy,
+  ): Promise<readonly { readonly model: ModelDescriptor; readonly reason: RejectionReason }[]> {
+    const base = policy ?? this.#policy;
+    const effective = policyForRequest(request, base);
+    const catalog = await this.catalog(effective);
+    return catalog.excluded;
   }
 
   async generate(request: ChatRequest, policy?: EligibilityPolicy): Promise<GenerationResult> {

@@ -31,8 +31,8 @@ import {
   type ChatUsage,
 } from "@/lib/ai/chat-protocol";
 import { streamChatEvents, toChatStreamError } from "@/lib/ai/chat-service";
-import { NO_FREE_MODEL_DETAIL } from "@/lib/ai/eligibility";
 import { invalidRequest, noEligibleModel } from "@/lib/ai/errors";
+import { describeExclusions } from "@/lib/ai/gateway";
 import { getAiGateway } from "@/lib/ai/runtime";
 import { recordUsage } from "@/lib/ai/usage-store";
 
@@ -72,7 +72,14 @@ export async function POST(request: Request): Promise<Response> {
     // The whole ranked list is passed on so a provider failure can fall through
     // to the next-best free model.
     const candidates = await gateway.rankedCandidates(chatRequest);
-    if (candidates.length === 0) throw noEligibleModel(NO_FREE_MODEL_DETAIL);
+    if (candidates.length === 0) {
+      // "No free model is eligible" is true in every broken configuration, so
+      // saying it alone is not a diagnosis. The catalog already computed which
+      // models were rejected and why; hand that over instead of the hardcoded
+      // detail. Same error code, same retryability — only the message changes.
+      const excluded = await gateway.catalogExclusions(chatRequest);
+      throw noEligibleModel(describeExclusions(excluded));
+    }
     events = streamChatEvents(gateway, candidates, chatRequest, { signal: request.signal });
   } catch (cause) {
     return errorResponse(toChatStreamError(cause));
