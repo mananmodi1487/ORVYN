@@ -7,6 +7,7 @@
  * unreachable is excluded from routing rather than being attempted, and no
  * call is made to a provider that failed pre-flight checks.
  */
+import { isStreamable } from "./capabilities";
 import {
   DEFAULT_ELIGIBILITY_POLICY,
   isPinnedModel,
@@ -28,6 +29,7 @@ import type {
   ProviderHealth,
   ProviderId,
   RoutingStrategy,
+  StreamOptions,
 } from "./types";
 
 export interface GatewayOptions {
@@ -170,11 +172,42 @@ export class AiGateway {
    * model selection happens before the first chunk is pulled. An ineligible
    * model therefore fails immediately rather than failing mid-stream.
    */
-  async *stream(request: ChatRequest, policy?: EligibilityPolicy): AsyncGenerator<GenerationChunk> {
+  async *stream(
+    request: ChatRequest,
+    policy?: EligibilityPolicy,
+    options?: StreamOptions,
+  ): AsyncGenerator<GenerationChunk> {
     const { model } = await this.select({ ...request, requireStreaming: true }, policy);
+    yield* this.streamSelected(model, request, options);
+  }
+
+  /**
+   * Streams an already-selected model, skipping a second selection pass.
+   *
+   * This exists because selection has to be able to fail *before* a caller
+   * commits a response. A lazy `stream()` cannot do that: its failure surfaces
+   * only once iteration starts, by which point the status code is already sent
+   * and the failure has to be reported in-band instead.
+   *
+   * The caller is responsible for having obtained `model` from `select`. The
+   * streaming capability gate is still enforced here, so a model that cannot
+   * stream is rejected even though eligibility was not re-checked.
+   */
+  async *streamSelected(
+    model: ModelDescriptor,
+    request: ChatRequest,
+    options?: StreamOptions,
+  ): AsyncGenerator<GenerationChunk> {
+    if (!isStreamable(model.capabilities)) {
+      throw modelUnavailable(
+        model.provider,
+        model.modelId,
+        "model does not support streaming",
+      );
+    }
     const provider = this.#requireProvider(model.provider);
     const ref: ModelRef = { provider: model.provider, modelId: model.modelId };
-    for await (const chunk of provider.stream(request, ref)) {
+    for await (const chunk of provider.stream(request, ref, options)) {
       yield chunk;
     }
   }

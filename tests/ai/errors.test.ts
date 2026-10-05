@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   AI_ERROR_CODES,
   AiProviderError,
+  invalidRequest,
   isAiProviderError,
   modelUnavailable,
   noEligibleModel,
@@ -12,13 +13,23 @@ import {
 } from "@/lib/ai/errors";
 
 describe("error codes", () => {
-  it("exposes exactly the four documented codes", () => {
+  it("exposes exactly the documented codes", () => {
     assert.deepEqual([...AI_ERROR_CODES], [
       "PROVIDER_UNAVAILABLE",
       "MODEL_UNAVAILABLE",
       "NO_ELIGIBLE_MODEL",
       "PROVIDER_REQUEST_FAILED",
+      "INVALID_REQUEST",
     ]);
+  });
+
+  it("treats a bad request as never retryable", () => {
+    // The same malformed input would fail identically, so advertising it as
+    // retryable would only invite the client to resubmit it forever.
+    const error = invalidRequest("`turns` must be an array");
+    assert.equal(error.code, "INVALID_REQUEST");
+    assert.equal(error.retryable, false);
+    assert.equal(error.detail, "`turns` must be an array");
   });
 });
 

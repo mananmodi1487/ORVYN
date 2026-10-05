@@ -26,6 +26,7 @@ export {
 export {
   AI_ERROR_CODES,
   AiProviderError,
+  invalidRequest,
   isAiProviderError,
   modelUnavailable,
   noEligibleModel,
@@ -55,7 +56,35 @@ export {
   type GatewayOptions,
   type SelectionResult,
 } from "./gateway";
-export { costScore, estimateCost, estimateInputTokens, type CostEstimate } from "./pricing";
+export {
+  ERROR_STATUS,
+  parseChatStreamEvent,
+  type ChatRequestBody,
+  type ChatStreamError,
+  type ChatStreamEvent,
+  type ChatStreamMeta,
+  type ChatTurn,
+  type PinnedModelRef,
+} from "./chat-protocol";
+export {
+  MAX_TOTAL_CHARS,
+  MAX_TURNS,
+  MAX_TURN_CHARS,
+  parseChatRequest,
+} from "./chat-request";
+export {
+  selectChatModel,
+  streamChatEvents,
+  toChatStreamError,
+  type ChatStreamOptions,
+} from "./chat-service";
+export { getAiGateway, resetAiGateway } from "./runtime";
+export {
+  costScore,
+  estimateCost,
+  estimateInputTokens,
+  type CostEstimate,
+} from "./pricing";
 export type { AiProvider, AiProviderInfo } from "./provider";
 export { ProviderRegistry, createProviderRegistry } from "./registry";
 export { rankCandidates, scoreForStrategy, selectModel, type RankedCandidate } from "./router";
@@ -83,6 +112,7 @@ export {
   type ProviderKind,
   type ProviderStatus,
   type RoutingStrategy,
+  type StreamOptions,
   type TokenUsage,
 } from "./types";
 export {

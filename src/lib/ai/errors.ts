@@ -3,12 +3,17 @@ import type { ProviderId } from "./types";
 /**
  * Structured, machine-readable error codes. Callers branch on `code` rather
  * than parsing messages.
+ *
+ * `INVALID_REQUEST` is the only code that never involves a provider: it is
+ * raised before any routing decision, when the caller's input cannot be served
+ * as written. It exists so a client sees exactly one error shape.
  */
 export const AI_ERROR_CODES = [
   "PROVIDER_UNAVAILABLE",
   "MODEL_UNAVAILABLE",
   "NO_ELIGIBLE_MODEL",
   "PROVIDER_REQUEST_FAILED",
+  "INVALID_REQUEST",
 ] as const;
 
 export type AiErrorCode = (typeof AI_ERROR_CODES)[number];
@@ -94,6 +99,17 @@ export function modelUnavailable(
 
 export function noEligibleModel(detail: string): AiProviderError {
   return new AiProviderError("NO_ELIGIBLE_MODEL", "No eligible model is available", { detail });
+}
+
+/**
+ * Raised before any routing decision when the caller's input cannot be served
+ * as written. Never `retryable` — the same input would fail the same way.
+ */
+export function invalidRequest(detail: string): AiProviderError {
+  return new AiProviderError("INVALID_REQUEST", "Request is not valid", {
+    detail,
+    retryable: false,
+  });
 }
 
 export function providerRequestFailed(

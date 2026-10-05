@@ -164,3 +164,14 @@ export type GenerationChunk =
   | { readonly type: "text"; readonly delta: string }
   | { readonly type: "usage"; readonly usage: TokenUsage }
   | { readonly type: "done"; readonly finishReason: FinishReason };
+
+/**
+ * Per-call controls for `stream`.
+ *
+ * `signal` lets a caller (an HTTP client disconnecting, a Stop button) cancel
+ * in-flight work. Aborting ends the iteration normally rather than surfacing as
+ * an error, because the reason for stopping is the caller's own decision.
+ */
+export interface StreamOptions {
+  readonly signal?: AbortSignal | undefined;
+}

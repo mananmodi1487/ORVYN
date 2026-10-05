@@ -11,13 +11,12 @@ import { Button, Kbd } from "@/components/ui";
 import type { ResponseMode } from "@/config/workspace";
 import { cn } from "@/lib/utils";
 import { ComposerModeMenu } from "./composer-mode-menu";
-import { ArrowUpIcon, PaperclipIcon } from "./icons";
+import { ArrowUpIcon, PaperclipIcon, StopIcon } from "./icons";
 
 const MAX_TEXTAREA_HEIGHT = 200;
 const COMPOSER_ID = "orvyn-composer";
 
 const notices = {
-  send: "Sending is not connected in this build — no model is wired up yet.",
   attach: "Attachments are not connected in this build.",
 } as const;
 
@@ -27,6 +26,15 @@ export type MessageComposerProps = {
   mode: ResponseMode;
   onModeChange: (mode: ResponseMode) => void;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  /**
+   * Sends the draft. Optional so the composer stays inert rather than pretending
+   * to work when a host has no endpoint to talk to.
+   */
+  onSend?: ((text: string) => void) | undefined;
+  /** True while a reply is streaming. The send button becomes a stop button. */
+  isStreaming?: boolean | undefined;
+  /** Cancels the in-flight reply. Only rendered when streaming. */
+  onStop?: (() => void) | undefined;
 };
 
 export function MessageComposer({
@@ -35,9 +43,12 @@ export function MessageComposer({
   mode,
   onModeChange,
   inputRef,
+  onSend,
+  isStreaming = false,
+  onStop,
 }: MessageComposerProps) {
   const [notice, setNotice] = useState<string | null>(null);
-  const canSend = value.trim().length > 0;
+  const canSend = value.trim().length > 0 && onSend !== undefined;
 
   useEffect(() => {
     const textarea = inputRef.current;
@@ -48,8 +59,14 @@ export function MessageComposer({
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSend) return;
-    setNotice(notices.send);
+    // One request at a time: submitting mid-stream would race the streaming
+    // update to the shared turn list.
+    if (!canSend || isStreaming) return;
+    const text = value.trim();
+    if (text === "") return;
+    onSend(text);
+    onValueChange("");
+    setNotice(null);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -105,9 +122,27 @@ export function MessageComposer({
               <Kbd>Enter</Kbd>
               <span>for a new line</span>
             </p>
-            <Button type="submit" variant="accent" size="icon" aria-label="Send message" disabled={!canSend}>
-              <ArrowUpIcon />
-            </Button>
+            {isStreaming && onStop !== undefined ? (
+              <Button
+                type="button"
+                variant="accent"
+                size="icon"
+                aria-label="Stop generating"
+                onClick={onStop}
+              >
+                <StopIcon />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                variant="accent"
+                size="icon"
+                aria-label="Send message"
+                disabled={!canSend || isStreaming}
+              >
+                <ArrowUpIcon />
+              </Button>
+            )}
           </div>
         </div>
       </div>

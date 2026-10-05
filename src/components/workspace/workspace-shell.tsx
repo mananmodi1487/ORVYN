@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultResponseMode, type ResponseMode } from "@/config/workspace";
-import { useIsClient, useMediaQuery } from "@/lib/hooks";
+import { useConversation, useIsClient, useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { AppSidebar } from "./app-sidebar";
+import { ConversationTranscript } from "./conversation-transcript";
 import { MessageComposer } from "./message-composer";
 import { TopBar } from "./top-bar";
 import { WelcomePanel } from "./welcome-panel";
@@ -18,6 +19,8 @@ export function WorkspaceShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState<ResponseMode>(defaultResponseMode);
   const [draft, setDraft] = useState("");
+
+  const conversation = useConversation();
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const isClient = useIsClient();
@@ -55,6 +58,7 @@ export function WorkspaceShell() {
   }, [isDesktop]);
 
   const handleNewConversation = () => {
+    conversation.reset();
     setDraft("");
     if (!isDesktop) setDrawerOpen(false);
     composerRef.current?.focus();
@@ -62,6 +66,11 @@ export function WorkspaceShell() {
 
   const handleSelectPrompt = (prompt: string) => {
     setDraft(prompt);
+    composerRef.current?.focus();
+  };
+
+  const handleSend = (text: string) => {
+    conversation.send(text);
     composerRef.current?.focus();
   };
 
@@ -121,7 +130,16 @@ export function WorkspaceShell() {
 
         <main id={MAIN_ID} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <WelcomePanel onSelectPrompt={handleSelectPrompt} />
+            {conversation.turns.length === 0 ? (
+              <WelcomePanel onSelectPrompt={handleSelectPrompt} />
+            ) : (
+              <ConversationTranscript
+                turns={conversation.turns}
+                isStreaming={conversation.isStreaming}
+                error={conversation.error}
+                activeModel={conversation.activeModel}
+              />
+            )}
           </div>
 
           <div className="shrink-0 border-t border-line bg-canvas">
@@ -132,6 +150,9 @@ export function WorkspaceShell() {
                 mode={mode}
                 onModeChange={setMode}
                 inputRef={composerRef}
+                onSend={handleSend}
+                isStreaming={conversation.isStreaming}
+                onStop={conversation.stop}
               />
             </div>
           </div>

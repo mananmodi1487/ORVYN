@@ -165,6 +165,23 @@ export function CompassIcon(props: IconProps) {
   );
 }
 
+export function StopIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" />
+    </Stroke>
+  );
+}
+
+export function AlertIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.75v4.75M12 15.75h.01" />
+    </Stroke>
+  );
+}
+
 export function LightbulbIcon(props: IconProps) {
   return (
     <Stroke {...props}>

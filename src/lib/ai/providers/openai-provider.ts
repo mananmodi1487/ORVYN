@@ -8,6 +8,7 @@ import type {
   ModelDescriptor,
   ModelRef,
   ProviderHealth,
+  StreamOptions,
   TokenUsage,
 } from "../types";
 import {
@@ -247,8 +248,19 @@ export function createOpenAiCompatibleProvider(
     };
   }
 
-  async function* stream(request: ChatRequest, model: ModelRef): AsyncIterable<GenerationChunk> {
+  async function* stream(
+    request: ChatRequest,
+    model: ModelRef,
+    options?: StreamOptions,
+  ): AsyncIterable<GenerationChunk> {
     const controller = new AbortController();
+    const externalSignal = options?.signal;
+    if (externalSignal?.aborted === true) {
+      controller.abort();
+    } else {
+      externalSignal?.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+
     let response: Response;
     try {
       response = await client.requestStream(
@@ -257,6 +269,7 @@ export function createOpenAiCompatibleProvider(
         controller.signal,
       );
     } catch (cause) {
+      if (controller.signal.aborted) return;
       // requestStream already normalized transport failures; anything reaching
       // here is unexpected.
       throw providerRequestFailed(info.id, {
@@ -287,6 +300,8 @@ export function createOpenAiCompatibleProvider(
         if (delta.finishReason !== null) finishReason = delta.finishReason;
       }
     } catch (cause) {
+      // A caller-side cancel ends the stream; it is not a provider failure.
+      if (controller.signal.aborted) return;
       throw providerRequestFailed(info.id, {
         detail: cause instanceof Error ? cause.message : "stream interrupted",
         cause,

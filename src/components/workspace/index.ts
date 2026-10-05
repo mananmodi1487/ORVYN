@@ -4,6 +4,9 @@ export type { AppSidebarProps } from "./app-sidebar";
 export { ComposerModeMenu } from "./composer-mode-menu";
 export type { ComposerModeMenuProps } from "./composer-mode-menu";
 
+export { ConversationTranscript } from "./conversation-transcript";
+export type { ConversationTranscriptProps } from "./conversation-transcript";
+
 export { MessageComposer } from "./message-composer";
 export type { MessageComposerProps } from "./message-composer";
 

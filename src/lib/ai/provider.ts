@@ -7,6 +7,7 @@ import type {
   ProviderHealth,
   ProviderId,
   ProviderKind,
+  StreamOptions,
 } from "./types";
 
 /**
@@ -44,5 +45,9 @@ export interface AiProvider {
   generate(request: ChatRequest, model: ModelRef): Promise<GenerationResult>;
 
   /** Streamed completion. Rejects with `AiProviderError` before the first chunk on failure. */
-  stream(request: ChatRequest, model: ModelRef): AsyncIterable<GenerationChunk>;
+  stream(
+    request: ChatRequest,
+    model: ModelRef,
+    options?: StreamOptions | undefined,
+  ): AsyncIterable<GenerationChunk>;
 }
