@@ -187,6 +187,11 @@ export function createOpenAiCompatibleProvider(
     describeModel(info.id, modelId, declarations);
 
   async function listModels(): Promise<readonly ModelDescriptor[]> {
+    if (!info.configured) {
+      throw providerRequestFailed(info.id, {
+        detail: info.configurationDetail ?? "provider is not configured",
+      });
+    }
     const payload = await client.requestJson("/models", { method: "GET" });
     const reported = parseReportedModelIds(payload);
     // A provider that reports nothing usable still exposes the ids declared for
@@ -231,6 +236,11 @@ export function createOpenAiCompatibleProvider(
   }
 
   async function generate(request: ChatRequest, model: ModelRef): Promise<GenerationResult> {
+    if (!info.configured) {
+      throw providerRequestFailed(info.id, {
+        detail: info.configurationDetail ?? "provider is not configured",
+      });
+    }
     const payload = await client.requestJson("/chat/completions", {
       method: "POST",
       body: toChatBody(request, model, false),

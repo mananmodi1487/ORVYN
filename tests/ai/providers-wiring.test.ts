@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { createGatewayProviders } from "@/lib/ai/providers";
+import { CLOUDFLARE_PROVIDER_ID } from "@/lib/ai/providers/cloudflare";
 import { DeclarationSet } from "@/lib/ai/declarations";
 import { FREELLMAPI_PROVIDER_ID } from "@/lib/ai/providers/freellm";
 import { GROQ_PROVIDER_ID } from "@/lib/ai/providers/groq";
@@ -19,11 +20,11 @@ describe("createGatewayProviders", () => {
     const providers = createGatewayProviders({ env: env({ }) });
     assert.deepEqual(
       providers.map((provider) => provider.info.id),
-      ["omniroute", "freellmapi", "groq", "pollinations"],
+      ["cloudflare", "omniroute", "freellmapi", "groq", "pollinations"],
     );
     assert.deepEqual(
       providers.map((provider) => provider.info.configured),
-      [false, false, false, false],
+      [false, false, false, false, false],
     );
   });
 
@@ -32,6 +33,33 @@ describe("createGatewayProviders", () => {
     const omni = providers.find((provider) => provider.info.id === OMNIROUTE_PROVIDER_ID);
     assert.match(omni?.info.configurationDetail ?? "", /OMNIROUTE_BASE_URL/);
     assert.equal((omni?.info.configurationDetail ?? "").includes("secret"), false);
+  });
+
+  it("requires the account id for Cloudflare, even with the pair present", () => {
+    const providers = createGatewayProviders({
+      env: env({
+        CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+        CLOUDFLARE_API_TOKEN: "tok",
+      }),
+    });
+    const cloudflare = providers.find((provider) => provider.info.id === CLOUDFLARE_PROVIDER_ID);
+    assert.equal(cloudflare?.info.configured, false);
+    assert.match(cloudflare?.info.configurationDetail ?? "", /CLOUDFLARE_ACCOUNT_ID/);
+    assert.equal((cloudflare?.info.configurationDetail ?? "").includes("tok"), false);
+  });
+
+  it("builds the Workers AI URL from the account id when all three are present", () => {
+    const providers = createGatewayProviders({
+      env: env({
+        CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+        CLOUDFLARE_ACCOUNT_ID: "abc123",
+        CLOUDFLARE_API_TOKEN: "tok",
+      }),
+    });
+    const cloudflare = providers.find((provider) => provider.info.id === CLOUDFLARE_PROVIDER_ID);
+    assert.equal(cloudflare?.info.configured, true);
+    assert.equal(cloudflare?.info.configurationDetail, null);
+    assert.equal(cloudflare?.info.displayName, "Cloudflare");
   });
 
   it("marks a fully configured gateway as configured and normalizes its base url", () => {
@@ -62,6 +90,9 @@ describe("createGatewayProviders", () => {
   it("ships no model declarations, so nothing is eligible until declared", async () => {
     const providers = createGatewayProviders({
       env: env({
+        CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+        CLOUDFLARE_ACCOUNT_ID: "abc123",
+        CLOUDFLARE_API_TOKEN: "k",
         OMNIROUTE_BASE_URL: "https://omni.example.test/v1",
         OMNIROUTE_API_KEY: "k",
         FREE_LLM_API_BASE_URL: "https://free.example.test/v1",
@@ -79,12 +110,12 @@ describe("createGatewayProviders", () => {
 
     assert.deepEqual(
       catalog.entries.flatMap((entry) => entry.models.map((model) => model.modelId)),
-      ["some-model", "some-model", "some-model", "some-model"],
+      ["some-model", "some-model", "some-model", "some-model", "some-model"],
     );
     assert.deepEqual(catalog.eligible, []);
     assert.deepEqual(
       catalog.excluded.map((entry) => entry.reason),
-      ["model-disabled", "model-disabled", "model-disabled", "model-disabled"],
+      ["model-disabled", "model-disabled", "model-disabled", "model-disabled", "model-disabled"],
     );
   });
 
@@ -218,6 +249,105 @@ describe("createGatewayProviders", () => {
     assert.deepEqual(
       catalog.eligible.map((model) => `${model.provider}/${model.modelId}`),
       ["pollinations/openai/gpt-5.4-nano"],
+    );
+  });
+
+  it("declares a Cloudflare free-allowance model and routes to it", async () => {
+    const providers = createGatewayProviders({
+      env: env({
+        CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+        CLOUDFLARE_ACCOUNT_ID: "abc123",
+        CLOUDFLARE_API_TOKEN: "tok",
+      }),
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ data: [{ id: "@cf/meta/llama-3.2-1b-instruct" }] }),
+          { status: 200 },
+        ),
+      declarations: new DeclarationSet([
+        {
+          provider: "cloudflare",
+          modelId: "@cf/meta/llama-3.2-1b-instruct",
+          enabled: true,
+          capabilities: {
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            supportsStreaming: true,
+            supportsSystemPrompt: true,
+          },
+          availability: "available",
+          // Cloudflare publishes metered USD/Neuron rates for every model, so
+          // this is not a permanently-free model. It is free-allowance: the
+          // operator funds it out of a zero-cost daily budget, and the flag is
+          // what lets it through the free-only policy.
+          pricing: {
+            tier: "paid",
+            inputPerMillionTokens: 0.027,
+            outputPerMillionTokens: 0.201,
+          },
+          context: { contextWindowTokens: 128000, maxOutputTokens: 8192, source: "declared" },
+          freeAllowance: true,
+        },
+      ]),
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry(providers.filter((provider) => provider.info.configured)),
+    });
+    const catalog = await gateway.catalog();
+    assert.deepEqual(
+      catalog.eligible.map((model) => `${model.provider}/${model.modelId}`),
+      ["cloudflare/@cf/meta/llama-3.2-1b-instruct"],
+    );
+    assert.equal(
+      catalog.eligible[0]?.freeAllowance,
+      true,
+      "the allowance flag must survive into the descriptor",
+    );
+  });
+
+  it("rejects a Cloudflare model without the free-allowance flag", async () => {
+    const providers = createGatewayProviders({
+      env: env({
+        CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+        CLOUDFLARE_ACCOUNT_ID: "abc123",
+        CLOUDFLARE_API_TOKEN: "tok",
+      }),
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ data: [{ id: "@cf/meta/llama-3.2-1b-instruct" }] }),
+          { status: 200 },
+        ),
+      declarations: new DeclarationSet([
+        {
+          provider: "cloudflare",
+          modelId: "@cf/meta/llama-3.2-1b-instruct",
+          enabled: true,
+          capabilities: {
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            supportsStreaming: true,
+            supportsSystemPrompt: true,
+          },
+          availability: "available",
+          // Metered rates with no allowance flag: this is a paid model as far as
+          // the free-only policy is concerned, and must not be routed to.
+          pricing: {
+            tier: "paid",
+            inputPerMillionTokens: 0.027,
+            outputPerMillionTokens: 0.201,
+          },
+          context: { contextWindowTokens: 128000, maxOutputTokens: 8192, source: "declared" },
+        },
+      ]),
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry(providers.filter((provider) => provider.info.configured)),
+    });
+    const catalog = await gateway.catalog();
+    assert.deepEqual(catalog.eligible, []);
+    assert.deepEqual(
+      catalog.excluded.map((entry) => entry.reason),
+      ["paid-not-allowed"],
     );
   });
 });

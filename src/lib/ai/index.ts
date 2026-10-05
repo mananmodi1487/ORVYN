@@ -38,6 +38,7 @@ export {
   DEFAULT_ELIGIBILITY_POLICY,
   NO_FREE_MODEL_DETAIL,
   evaluateModelEligibility,
+  isFreeEligible,
   isPinnedModel,
   partitionByEligibility,
   policyForRequest,
@@ -163,6 +164,11 @@ export {
   EMPTY_DECLARATION_SET,
   createDeclarationSet,
 } from "./declarations";
+export {
+  createCloudflareProvider,
+  CLOUDFLARE_PROVIDER_ID,
+  type CloudflareProviderOptions,
+} from "./providers/cloudflare";
 export {
   createOpenAiCompatibleProvider,
   parseSseDataLine,

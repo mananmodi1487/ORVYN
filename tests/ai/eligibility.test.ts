@@ -190,7 +190,71 @@ describe("evaluateModelEligibility", () => {
     assert.equal(evaluateModelEligibility(model, states({ p: up }), policy).eligible, true);
   });
 
-  it("reports only the first failing rule, in a fixed order", () => {
+  it("accepts a free-allowance model even though it is tier paid", () => {
+    const policy: EligibilityPolicy = { ...DEFAULT_ELIGIBILITY_POLICY, allowPaidModels: false };
+    const model = makeModel({
+      provider: "p",
+      modelId: "m1",
+      pricing: {
+        currency: "USD",
+        tier: "paid",
+        inputPerMillionTokens: 0.027,
+        outputPerMillionTokens: 0.201,
+      },
+      freeAllowance: true,
+    });
+    assert.equal(evaluateModelEligibility(model, states({ p: up }), policy).eligible, true);
+  });
+
+  it("rejects a paid model that claims an allowance but publishes no rates", () => {
+    const policy: EligibilityPolicy = { ...DEFAULT_ELIGIBILITY_POLICY, allowPaidModels: false };
+    const model = makeModel({
+      provider: "p",
+      modelId: "m1",
+      pricing: {
+        currency: "USD",
+        tier: "paid",
+        inputPerMillionTokens: null,
+        outputPerMillionTokens: null,
+      },
+      freeAllowance: true,
+    });
+    assert.equal(evaluateModelEligibility(model, states({ p: up }), policy).eligible, false);
+  });
+
+  it("rejects a free-allowance model when the operator has not declared it", () => {
+    const policy: EligibilityPolicy = { ...DEFAULT_ELIGIBILITY_POLICY, allowPaidModels: false };
+    const model = makeModel({
+      provider: "p",
+      modelId: "m1",
+      pricing: {
+        currency: "USD",
+        tier: "paid",
+        inputPerMillionTokens: 0.027,
+        outputPerMillionTokens: 0.201,
+      },
+      freeAllowance: false,
+    });
+    assert.equal(evaluateModelEligibility(model, states({ p: up }), policy).eligible, false);
+  });
+
+  it("lets a paid model through only when the operator opts paid models in", () => {
+    const policy: EligibilityPolicy = { ...DEFAULT_ELIGIBILITY_POLICY, allowPaidModels: true };
+    const model = makeModel({
+      provider: "p",
+      modelId: "m1",
+      pricing: {
+        currency: "USD",
+        tier: "paid",
+        inputPerMillionTokens: 0.027,
+        outputPerMillionTokens: 0.201,
+      },
+      freeAllowance: false,
+    });
+    assert.equal(evaluateModelEligibility(model, states({ p: up }), policy).eligible, true);
+  });
+
+  it("never promotes a paid model by priority, cost or quality", async () => {
     const policy: EligibilityPolicy = {
       allowedProviders: [],
       allowPaidModels: false,

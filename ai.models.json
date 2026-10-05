@@ -26,6 +26,34 @@
         "maxOutputTokens": 32768,
         "source": "declared"
       }
+    },
+    {
+      "provider": "cloudflare",
+      "modelId": "@cf/meta/llama-3.2-1b-instruct",
+      "displayName": "Llama 3.2 1B",
+      "tags": ["quality:basic", "lightweight"],
+      "capabilities": {
+        "inputModalities": ["text"],
+        "outputModalities": ["text"],
+        "supportsStreaming": true,
+        "supportsSystemPrompt": true,
+        "supportsTools": false,
+        "supportsJsonOutput": false
+      },
+      "availability": "available",
+      "enabled": true,
+      "priority": 2,
+      "pricing": {
+        "tier": "paid",
+        "inputPerMillionTokens": 0.027,
+        "outputPerMillionTokens": 0.201
+      },
+      "context": {
+        "contextWindowTokens": 128000,
+        "maxOutputTokens": 8192,
+        "source": "declared"
+      },
+      "freeAllowance": true
     }
   ]
 }

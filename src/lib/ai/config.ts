@@ -10,7 +10,7 @@ import { assertServerOnly } from "./server-only";
  * which would ship every provider key to clients.
  */
 
-export const PROVIDER_IDS = ["omniroute", "freellmapi", "groq", "pollinations"] as const;
+export const PROVIDER_IDS = ["cloudflare", "omniroute", "freellmapi", "groq", "pollinations"] as const;
 export type ConfigurableProviderId = (typeof PROVIDER_IDS)[number];
 
 export interface ProviderEnvSpec {
@@ -18,9 +18,24 @@ export interface ProviderEnvSpec {
   readonly displayName: string;
   readonly baseUrlVar: string;
   readonly apiKeyVar: string;
+  /**
+   * Optional third variable. Workers AI embeds the account id in the URL path
+   * (`/accounts/{id}/ai/v1`), so it cannot be a static base URL. When set, the
+   * resolved config carries the raw value and the provider factory interpolates
+   * it; when unset, the provider is reported unconfigured even if the pair is
+   * present, because a URL with a missing account id is not a usable endpoint.
+   */
+  readonly accountIdVar?: string | undefined;
 }
 
 export const PROVIDER_ENV_SPECS: readonly ProviderEnvSpec[] = [
+  {
+    id: "cloudflare",
+    displayName: "Cloudflare",
+    baseUrlVar: "CLOUDFLARE_BASE_URL",
+    apiKeyVar: "CLOUDFLARE_API_TOKEN",
+    accountIdVar: "CLOUDFLARE_ACCOUNT_ID",
+  },
   {
     id: "omniroute",
     displayName: "OmniRoute",
@@ -59,6 +74,11 @@ export interface ResolvedProviderConfig {
   readonly displayName: string;
   readonly baseUrl: string;
   readonly apiKey: string;
+  /**
+   * Optional third value for providers whose URL embeds an account identifier,
+   * such as Cloudflare Workers AI. Empty when the spec does not declare one.
+   */
+  readonly accountId?: string | undefined;
 }
 
 export type ProviderConfigResult =
@@ -89,11 +109,21 @@ export function resolveProviderConfig(
 
   const baseUrl = clean(env[spec.baseUrlVar]);
   const apiKey = clean(env[spec.apiKeyVar]);
+  const accountId =
+    spec.accountIdVar === undefined ? undefined : clean(env[spec.accountIdVar]);
 
   const missing: string[] = [];
   if (baseUrl === undefined) missing.push(spec.baseUrlVar);
   if (apiKey === undefined) missing.push(spec.apiKeyVar);
+  // The account id is only required for providers whose URL embeds it. For
+  // every other provider the field is absent and must not affect resolution.
+  if (spec.accountIdVar !== undefined && accountId === undefined) {
+    missing.push(spec.accountIdVar);
+  }
   if (baseUrl === undefined || apiKey === undefined) {
+    return { ok: false, reason: describeMissing(spec, missing) };
+  }
+  if (spec.accountIdVar !== undefined && accountId === undefined) {
     return { ok: false, reason: describeMissing(spec, missing) };
   }
 
@@ -104,6 +134,7 @@ export function resolveProviderConfig(
       displayName: spec.displayName,
       baseUrl: normalizeBaseUrl(baseUrl),
       apiKey,
+      ...(accountId === undefined ? {} : { accountId }),
     },
   };
 }

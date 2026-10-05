@@ -52,7 +52,7 @@ export const DEFAULT_ELIGIBILITY_POLICY: EligibilityPolicy = {
 
 /** The policy name a client-facing failure uses when nothing free is reachable. */
 export const NO_FREE_MODEL_DETAIL =
-  "no free model is eligible: declare a model with pricing tier free and both rates at 0";
+  "no free model is eligible: declare a model with pricing tier free and both rates at 0, or with freeAllowance: true and both rates declared";
 
 export type RejectionReason =
   | "provider-not-registered"
@@ -65,7 +65,8 @@ export type RejectionReason =
   | "streaming-unsupported"
   | "system-prompt-unsupported"
   | "paid-not-allowed"
-  | "unknown-pricing";
+  | "unknown-pricing"
+  | "allowance-not-declared";
 
 export interface EligibilityDecision {
   readonly eligible: boolean;
@@ -76,6 +77,37 @@ const ELIGIBLE: EligibilityDecision = { eligible: true, reason: null };
 
 function reject(reason: RejectionReason): EligibilityDecision {
   return { eligible: false, reason };
+}
+
+/**
+ * Whether a model is eligible under a free-only policy.
+ *
+ * Two distinct routes, kept separate on purpose:
+ *
+ * - `isFreeModel` — the model publishes zero rates and is genuinely free. It
+ *   needs no operator declaration and no allowance.
+ * - `freeAllowance` — the operator has declared this model is served out of a
+ *   zero-cost allowance they fund. The model still publishes metered rates and
+ *   is still `tier: "paid"` or `"unknown"`; the flag is what lets it through.
+ *
+ * The second route exists because some providers have no permanently-free
+ * models but do offer a zero-cost daily allowance that stops rather than
+ * bills. Treating those models as paid would exclude the only genuinely free
+ * path to them; treating them as permanently free would be a lie about their
+ * pricing. The allowance is the honest middle ground, and it is operator-owned.
+ *
+ * An allowance claim without published rates is rejected here too, not just at
+ * declaration load time: the runtime guard is independent of the schema, so a
+ * descriptor built directly (as in tests) cannot smuggle an unverifiable
+ * allowance through the free-only gate.
+ */
+export function isFreeEligible(model: ModelDescriptor): boolean {
+  if (isFreeModel(model.pricing)) return true;
+  if (model.freeAllowance !== true) return false;
+  return (
+    model.pricing.inputPerMillionTokens !== null &&
+    model.pricing.outputPerMillionTokens !== null
+  );
 }
 
 /**
@@ -113,11 +145,13 @@ export function evaluateModelEligibility(
   // Free-only is enforced here rather than in the router, so a paid or
   // unverifiable model is never a candidate at all. Ranking preferences cannot
   // promote something that was excluded.
-  if (!policy.allowPaidModels && !isFreeModel(model.pricing)) {
-    return reject(model.pricing.tier === "paid" ? "paid-not-allowed" : "unknown-pricing");
-  }
-
-  return ELIGIBLE;
+  //
+  // Two routes through the free-only gate, kept distinct:
+  // - permanently free (zero rates) — needs no declaration,
+  // - free-allowance (metered rates, operator-funded zero-cost budget).
+  if (policy.allowPaidModels) return ELIGIBLE;
+  if (isFreeEligible(model)) return ELIGIBLE;
+  return reject(model.pricing.tier === "paid" ? "paid-not-allowed" : "unknown-pricing");
 }
 
 export interface EligibilityReport {

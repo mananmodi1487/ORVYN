@@ -69,6 +69,7 @@ export function makeModel(
     },
     priority: overrides.priority ?? 0,
     tags: overrides.tags ?? [],
+    freeAllowance: overrides.freeAllowance ?? false,
   };
 }
 
@@ -182,6 +183,7 @@ function findModel(
       context: { contextWindowTokens: null, maxOutputTokens: null, source: "unknown" },
       priority: 0,
       tags: [],
+      freeAllowance: false,
     }
   );
 }

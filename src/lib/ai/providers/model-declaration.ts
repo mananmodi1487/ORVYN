@@ -45,6 +45,21 @@ export interface ModelDeclaration {
   /** Operator switch. Defaults to false: a model is routed to only on purpose. */
   readonly enabled?: boolean | undefined;
   /**
+   * Operator-declared free-allowance flag.
+   *
+   * True when the operator confirms the model is served under a zero-cost
+   * allowance the operator funds — a daily compute budget that stops rather
+   * than bills — rather than the model being permanently zero-priced.
+   *
+   * This is deliberately separate from `pricing.tier`. A free-allowance model
+   * still publishes metered rates and is still `tier: "paid"` or `"unknown"`;
+   * the flag is what lets it through a free-only policy. Without it, the model
+   * is rejected like any other paid or unpriced one.
+   *
+   * Defaults to false. It is never inferred from a model id or provider name.
+   */
+  readonly freeAllowance?: boolean | undefined;
+  /**
    * Operator preference, higher wins among candidates a strategy scores
    * equally. Defaults to 0. Never a substitute for eligibility.
    */
@@ -169,5 +184,6 @@ export function describeModel(
     context: buildContext(declaration),
     priority: declaration?.priority ?? DEFAULT_PRIORITY,
     tags: declaration?.tags ?? [],
+    freeAllowance: declaration?.freeAllowance ?? false,
   };
 }

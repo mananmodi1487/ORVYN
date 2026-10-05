@@ -105,6 +105,21 @@ export interface ModelDescriptor {
    */
   readonly priority: number;
   readonly tags: readonly string[];
+  /**
+   * Operator-declared free-allowance flag.
+   *
+   * True when the operator has confirmed this provider serves the model under a
+   * zero-cost allowance that the operator funds — a daily compute budget that
+   * stops rather than bills — rather than the model being permanently zero-priced.
+   *
+   * This is deliberately separate from `pricing.tier === "free"`. A free-allowance
+   * model still publishes metered rates and is still `tier: "paid"` or `"unknown"`;
+   * the flag is what lets it through a free-only policy. Without the flag, the
+   * model is rejected like any other paid or unpriced one.
+   *
+   * Defaults to false. It is never inferred from a model id or a provider name.
+   */
+  readonly freeAllowance: boolean;
 }
 
 /** Points at exactly one model on exactly one provider. */

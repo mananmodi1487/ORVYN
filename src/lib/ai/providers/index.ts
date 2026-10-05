@@ -1,4 +1,9 @@
 import { resolveAllProviderConfigs } from "../config";
+import {
+  CLOUDFLARE_ACCOUNT_PREFIX,
+  CLOUDFLARE_PROVIDER_ID,
+  createCloudflareProvider,
+} from "./cloudflare";
 import { createFreeLlmApiProvider, FREELLMAPI_PROVIDER_ID } from "./freellm";
 import { createGroqProvider, GROQ_PROVIDER_ID } from "./groq";
 import { createOmniRouteProvider, OMNIROUTE_PROVIDER_ID } from "./omniroute";
@@ -11,9 +16,9 @@ import type { AiProvider } from "../provider";
  * Composition root for the OpenAI-compatible gateways.
  *
  * Reads credentials from the environment, never from source. A provider whose
- * pair of variables is missing is still created — marked `configured: false` —
- * so the catalog can report *why* it is unavailable instead of pretending the
- * provider does not exist.
+ * variables are missing is still created — marked `configured: false` — so the
+ * catalog can report *why* it is unavailable instead of pretending the provider
+ * does not exist.
  *
  * Model declarations are supplied by the caller as a validated `DeclarationSet`.
  * Nothing is shipped: capabilities, pricing, context limits, and priority have
@@ -39,6 +44,20 @@ export function createGatewayProviders(options: CreateProvidersOptions = {}): re
   };
 
   const providers: AiProvider[] = [];
+
+  const cloudflare = resolved.get(CLOUDFLARE_PROVIDER_ID);
+  if (cloudflare === undefined) throw new Error("Cloudflare env spec is missing");
+  providers.push(
+    createCloudflareProvider({
+      configured: cloudflare.ok,
+      configurationDetail: cloudflare.ok ? null : cloudflare.reason,
+      apiKey: cloudflare.ok ? cloudflare.config.apiKey : "",
+      accountId: cloudflare.ok ? (cloudflare.config.accountId ?? "") : "",
+      accountPrefix: CLOUDFLARE_ACCOUNT_PREFIX,
+      ...shared,
+      declarations: declarations.forProvider(CLOUDFLARE_PROVIDER_ID),
+    }),
+  );
 
   const omni = resolved.get(OMNIROUTE_PROVIDER_ID);
   if (omni === undefined) throw new Error("OmniRoute env spec is missing");

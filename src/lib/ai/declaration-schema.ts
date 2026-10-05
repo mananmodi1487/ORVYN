@@ -38,6 +38,7 @@ export const DECLARATION_ISSUE_CODES = [
   "empty_capabilities",
   "contradictory_availability",
   "contradictory_context",
+  "contradictory_pricing",
   "duplicate_declaration",
 ] as const;
 
@@ -76,6 +77,7 @@ const DECLARATION_KEYS = [
   "priority",
   "pricing",
   "context",
+  "freeAllowance",
 ] as const;
 
 const PRICING_TIERS = ["free", "paid", "unknown"] as const;
@@ -399,6 +401,7 @@ export function validateModelDeclaration(
   const modelId = requireNonEmptyString(input, "modelId", path, issues);
   const displayName = readOptionalString(input, "displayName", path, issues);
   const enabled = readOptionalBoolean(input, "enabled", path, issues);
+  const freeAllowance = readOptionalBoolean(input, "freeAllowance", path, issues);
   const priority = readOptionalNumber(input, "priority", path, issues);
   const availability = readEnum<DeclarableAvailability>(
     input,
@@ -420,6 +423,39 @@ export function validateModelDeclaration(
     );
   }
 
+  /**
+   * A free-allowance model is one the operator funds out of a zero-cost budget.
+   * That only makes sense against metered rates: if the model is genuinely
+   * zero-priced, it is `tier: "free"` and needs no allowance at all. Declaring
+   * both is a contradiction, so it is rejected rather than silently resolved.
+   */
+  if (freeAllowance === true && pricing !== undefined && pricing.tier === "free") {
+    issues.add(
+      "contradictory_pricing",
+      `${path}.freeAllowance`,
+      `freeAllowance: true cannot be combined with pricing.tier "free"; a zero-priced model is free without an allowance`,
+    );
+  }
+
+  /**
+   * A free-allowance claim is only meaningful against rates the operator can
+   * point at. Without both rates present, "the operator funds this" is
+   * unverifiable and indistinguishable from an unpriced model, so it is
+   * rejected rather than accepted: failing closed means an allowance cannot
+   * substitute for a published price.
+   */
+  if (freeAllowance === true) {
+    const input = pricing?.inputPerMillionTokens;
+    const output = pricing?.outputPerMillionTokens;
+    if (input === undefined || output === undefined) {
+      issues.add(
+        "contradictory_pricing",
+        `${path}.freeAllowance`,
+        "freeAllowance: true requires pricing.inputPerMillionTokens and pricing.outputPerMillionTokens to be declared",
+      );
+    }
+  }
+
   if (!issues.ok || provider === undefined || modelId === undefined) {
     return { ok: false, issues: issues.issues };
   }
@@ -431,6 +467,7 @@ export function validateModelDeclaration(
     ...(capabilities === undefined ? {} : { capabilities }),
     ...(availability === undefined ? {} : { availability }),
     ...(enabled === undefined ? {} : { enabled }),
+    ...(freeAllowance === undefined ? {} : { freeAllowance }),
     ...(priority === undefined ? {} : { priority }),
     ...(pricing === undefined ? {} : { pricing }),
     ...(context === undefined ? {} : { context }),

@@ -12,15 +12,16 @@ import {
 } from "@/lib/ai/config";
 
 const OMNIROUTE = getProviderEnvSpec("omniroute");
-const FREELLM = getProviderEnvSpec("freellmapi");
+  const FREELLM = getProviderEnvSpec("freellmapi");
+  const CLOUDFLARE = getProviderEnvSpec("cloudflare");
 
-function env(values: Record<string, string>): NodeJS.ProcessEnv {
-  return values as NodeJS.ProcessEnv;
-}
+  function env(values: Record<string, string>): NodeJS.ProcessEnv {
+    return values as NodeJS.ProcessEnv;
+  }
 
 describe("provider environment specs", () => {
   it("covers every configured gateway", () => {
-    assert.deepEqual([...PROVIDER_IDS], ["omniroute", "freellmapi", "groq", "pollinations"]);
+    assert.deepEqual([...PROVIDER_IDS], ["cloudflare", "omniroute", "freellmapi", "groq", "pollinations"]);
   });
 
   it("names the non-public variables, so no key can be prefixed for the browser", () => {
@@ -29,14 +30,19 @@ describe("provider environment specs", () => {
       assert.match(spec.apiKeyVar, /^[A-Z_]+$/);
       assert.equal(spec.baseUrlVar.startsWith("NEXT_PUBLIC_"), false);
       assert.equal(spec.apiKeyVar.startsWith("NEXT_PUBLIC_"), false);
+      if (spec.accountIdVar !== undefined) {
+        assert.match(spec.accountIdVar, /^[A-Z_]+$/);
+        assert.equal(spec.accountIdVar.startsWith("NEXT_PUBLIC_"), false);
+      }
     }
   });
 
-  it("has a Groq spec pointing at the OpenAI-compatible endpoint", () => {
-    const groq = getProviderEnvSpec("groq");
-    assert.equal(groq.baseUrlVar, "GROQ_BASE_URL");
-    assert.equal(groq.apiKeyVar, "GROQ_API_KEY");
-    assert.equal(groq.displayName, "Groq");
+  it("has a Cloudflare spec with an account id variable", () => {
+    const cloudflare = getProviderEnvSpec("cloudflare");
+    assert.equal(cloudflare.baseUrlVar, "CLOUDFLARE_BASE_URL");
+    assert.equal(cloudflare.apiKeyVar, "CLOUDFLARE_API_TOKEN");
+    assert.equal(cloudflare.accountIdVar, "CLOUDFLARE_ACCOUNT_ID");
+    assert.equal(cloudflare.displayName, "Cloudflare");
   });
 
   it("has a Pollinations spec pointing at the OpenAI-compatible gateway", () => {
@@ -115,6 +121,47 @@ describe("resolveProviderConfig", () => {
     );
     assert.equal(result.ok, true);
     const serialized = JSON.stringify(resolveAllProviderConfigs(env({})));
+    assert.equal(serialized.includes("super-secret"), false);
+  });
+
+  it("requires the account id for Cloudflare, since the URL embeds it", () => {
+    const result = resolveProviderConfig(
+      CLOUDFLARE,
+      env({
+        CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+        CLOUDFLARE_API_TOKEN: "tok",
+      }),
+    );
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.match(result.reason, /CLOUDFLARE_ACCOUNT_ID/);
+  });
+
+  it("carries the account id through when all three are present", () => {
+    const result = resolveProviderConfig(
+      CLOUDFLARE,
+      env({
+        CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+        CLOUDFLARE_ACCOUNT_ID: "abc123",
+        CLOUDFLARE_API_TOKEN: "tok",
+      }),
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.config.accountId, "abc123");
+    assert.equal(result.config.apiKey, "tok");
+  });
+
+  it("never echoes the token into a failure reason", () => {
+    const serialized = JSON.stringify(
+      resolveAllProviderConfigs(
+        env({
+          CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
+          CLOUDFLARE_ACCOUNT_ID: "abc123",
+          CLOUDFLARE_API_TOKEN: "super-secret",
+        }),
+      ),
+    );
     assert.equal(serialized.includes("super-secret"), false);
   });
 });
