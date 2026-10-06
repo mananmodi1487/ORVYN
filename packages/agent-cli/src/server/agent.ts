@@ -11,10 +11,58 @@ type MissionState = {
   interval: ReturnType<typeof setInterval> | null;
 };
 
-export function createAgentServer(port: number): Promise<AgentServerHandle> {
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:5173",
+];
+
+function parseAllowedOrigins(): string[] {
+  const raw = process.env.ORVYN_AGENT_ALLOWED_ORIGINS ?? "";
+  if (!raw.trim()) return DEFAULT_ALLOWED_ORIGINS;
+  return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
+}
+
+function isOriginAllowed(
+  origin: string | undefined,
+  allowedOrigins: string[],
+): boolean {
+  if (!origin) return false;
+  return allowedOrigins.includes(origin as string);
+}
+
+function setCorsHeaders(
+  res: http.ServerResponse,
+  origin: string | undefined,
+  allowedOrigins: string[],
+): void {
+  if (isOriginAllowed(origin, allowedOrigins) && origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+    res.setHeader("Access-Control-Max-Age", "86400");
+  }
+}
+
+export function createAgentServer(
+  port: number,
+  options?: { allowedOrigins?: string[] },
+): Promise<AgentServerHandle> {
+  const allowedOrigins = options?.allowedOrigins ?? parseAllowedOrigins();
   const missions = new Map<string, MissionState>();
 
   const server = http.createServer((req, res) => {
+    const origin = req.headers.origin;
+
+    if (req.method === "OPTIONS") {
+      setCorsHeaders(res, origin, allowedOrigins);
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    setCorsHeaders(res, origin, allowedOrigins);
     res.setHeader("Content-Type", "application/json");
 
     if (req.method === "GET" && req.url === "/v1/health") {
@@ -120,7 +168,7 @@ export function createAgentServer(port: number): Promise<AgentServerHandle> {
   });
 
   return new Promise((resolve, reject) => {
-    server.listen(port, () => {
+    server.listen(port, "localhost", () => {
       const address = server.address();
       const actualPort =
         typeof address === "object" && address !== null ? address.port : port;
