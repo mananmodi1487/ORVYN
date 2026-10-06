@@ -5,6 +5,9 @@ import { defaultResponseMode, type ResponseMode } from "@/config/workspace";
 import type { AuthenticatedUser } from "@/lib/auth/session";
 import { useAccountUsage, useConversation, useIsClient, useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
+import { useAgent } from "@/lib/agent/use-agent";
+import { CodingPanel } from "./coding/coding-panel";
+import { InstallPrompt } from "./coding/install-prompt";
 import { AppSidebar } from "./app-sidebar";
 import { ConversationTranscript } from "./conversation-transcript";
 import { MessageComposer } from "./message-composer";
@@ -25,6 +28,7 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState<ResponseMode>(defaultResponseMode);
   const [draft, setDraft] = useState("");
+  const [showCoding, setShowCoding] = useState(false);
 
   const conversation = useConversation();
   // Usage is refetched after each completed reply, so the pool figures here
@@ -33,6 +37,8 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const isClient = useIsClient();
+
+  const { agent, status: agentStatus } = useAgent();
 
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
@@ -125,23 +131,56 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
           onNavigate={() => {
             if (!isDesktop) setDrawerOpen(false);
           }}
-onNewConversation={handleNewConversation}
-            usage={usage}
-            user={user}
-          />
+          onNewConversation={handleNewConversation}
+          usage={usage}
+          user={user}
+        />
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <TopBar
-          mode={mode}
-          onModeChange={setMode}
-          onOpenDrawer={() => setDrawerOpen(true)}
-          triggerRef={drawerTriggerRef}
-        />
+        <div className="flex">
+          <TopBar
+            mode={mode}
+            onModeChange={setMode}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            triggerRef={drawerTriggerRef}
+          />
+          <button
+            type="button"
+            onClick={() => setShowCoding(!showCoding)}
+            className={cn(
+              "h-14 shrink-0 border-l border-line px-3 text-xs font-medium",
+              showCoding
+                ? "bg-ink text-canvas"
+                : "text-ink-muted hover:bg-hover hover:text-ink",
+            )}
+          >
+            {showCoding ? "Chat" : "Code"}
+          </button>
+        </div>
+
+        {showCoding && (
+          <div className="flex items-center justify-between border-b border-line px-4 py-2">
+            <span className="text-sm font-medium text-ink">ORVYN coding</span>
+            <button
+              type="button"
+              onClick={() => setShowCoding(false)}
+              className="text-xs text-ink-muted hover:text-ink"
+            >
+              Close
+            </button>
+          </div>
+        )}
 
         <main id={MAIN_ID} className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {conversation.turns.length === 0 ? (
+            {showCoding ? (
+              agentStatus === "available" ? (
+                <CodingPanel agent={agent} />
+              ) : (
+                <InstallPrompt />
+              )
+            ) : conversation.turns.length === 0 ? (
               <WelcomePanel onSelectPrompt={handleSelectPrompt} />
             ) : (
               <ConversationTranscript
@@ -155,16 +194,18 @@ onNewConversation={handleNewConversation}
 
           <div className="shrink-0 border-t border-line bg-canvas">
             <div className="mx-auto w-full max-w-3xl px-5 py-4 sm:px-8 sm:py-5">
-              <MessageComposer
-                value={draft}
-                onValueChange={setDraft}
-                mode={mode}
-                onModeChange={setMode}
-                inputRef={composerRef}
-                onSend={handleSend}
-                isStreaming={conversation.isStreaming}
-                onStop={conversation.stop}
-              />
+              {showCoding ? null : (
+                <MessageComposer
+                  value={draft}
+                  onValueChange={setDraft}
+                  mode={mode}
+                  onModeChange={setMode}
+                  inputRef={composerRef}
+                  onSend={handleSend}
+                  isStreaming={conversation.isStreaming}
+                  onStop={conversation.stop}
+                />
+              )}
             </div>
           </div>
         </main>

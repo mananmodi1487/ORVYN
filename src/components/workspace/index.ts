@@ -29,3 +29,10 @@ export type { WelcomePanelProps } from "./welcome-panel";
 
 export { WorkspaceShell } from "./workspace-shell";
 export type { WorkspaceShellProps } from "./workspace-shell";
+
+export {
+  CodingPanel,
+  CodingTab,
+  InstallPrompt,
+  MissionStatus,
+} from "./coding";
