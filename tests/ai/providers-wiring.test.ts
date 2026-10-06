@@ -108,14 +108,18 @@ describe("createGatewayProviders", () => {
     const gateway = new AiGateway({ registry: createProviderRegistry([...providers]) });
     const catalog = await gateway.catalog();
 
+    // Cloudflare serves its catalog from operator declarations rather than an
+    // OpenAI-compatible /v1/models endpoint, so with no declarations it reports
+    // zero models. The other four gateways still discover "some-model" from the
+    // mock fetch.
     assert.deepEqual(
       catalog.entries.flatMap((entry) => entry.models.map((model) => model.modelId)),
-      ["some-model", "some-model", "some-model", "some-model", "some-model"],
+      ["some-model", "some-model", "some-model", "some-model"],
     );
     assert.deepEqual(catalog.eligible, []);
     assert.deepEqual(
       catalog.excluded.map((entry) => entry.reason),
-      ["model-disabled", "model-disabled", "model-disabled", "model-disabled", "model-disabled"],
+      ["model-disabled", "model-disabled", "model-disabled", "model-disabled"],
     );
   });
 
@@ -253,17 +257,17 @@ describe("createGatewayProviders", () => {
   });
 
   it("declares a Cloudflare free-allowance model and routes to it", async () => {
+    const calls: string[] = [];
     const providers = createGatewayProviders({
       env: env({
         CLOUDFLARE_BASE_URL: "https://api.cloudflare.com/client/v4",
         CLOUDFLARE_ACCOUNT_ID: "abc123",
         CLOUDFLARE_API_TOKEN: "tok",
       }),
-      fetchImpl: async () =>
-        new Response(
-          JSON.stringify({ data: [{ id: "@cf/meta/llama-3.2-1b-instruct" }] }),
-          { status: 200 },
-        ),
+      fetchImpl: async (input: string) => {
+        calls.push(input);
+        return new Response(JSON.stringify({ result: [] }), { status: 200 });
+      },
       declarations: new DeclarationSet([
         {
           provider: "cloudflare",
@@ -303,6 +307,14 @@ describe("createGatewayProviders", () => {
       true,
       "the allowance flag must survive into the descriptor",
     );
+    // Discovery must not depend on the OpenAI-compatible /v1/models endpoint.
+    for (const url of calls) {
+      assert.equal(url.includes("/v1/models"), false);
+    }
+    // Health checking must use Cloudflare's documented discovery endpoint.
+    assert.deepEqual(calls, [
+      "https://api.cloudflare.com/client/v4/accounts/abc123/ai/models/search",
+    ]);
   });
 
   it("rejects a Cloudflare model without the free-allowance flag", async () => {

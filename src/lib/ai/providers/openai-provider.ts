@@ -47,6 +47,33 @@ export interface OpenAiCompatibleProviderOptions {
   /** Used only when the list endpoint returns nothing usable. */
   readonly fallbackModelIds?: readonly string[] | undefined;
   readonly now?: (() => Date) | undefined;
+  /**
+   * Path the adapter uses for model discovery.
+   *
+   * OpenAI-compatible gateways all expose `/models`. Cloudflare Workers AI does
+   * not: its documented discovery endpoint is `/ai/models/search`, and
+   * Cloudflare does not document that response's shape. Rather than parse an
+   * undocumented envelope, Cloudflare passes `null` here and serves its catalog
+   * from the operator's validated declarations alone — which is the source of
+   * truth for capabilities, pricing, and context in ORVYN's architecture
+   * anyway.
+   *
+   * Defaults to `/models`, so every existing gateway is unaffected.
+   */
+  readonly modelDiscoveryPath?: string | null | undefined;
+  /**
+   * Path the adapter uses for health probing. Defaults to the discovery path,
+   * or to this when discovery is disabled. Separated because a provider may
+   * have a documented read-only probe that is cheaper or more reliable than
+   * its discovery endpoint.
+   */
+  readonly healthCheckPath?: string | null | undefined;
+  /**
+   * Parses the discovery response into model ids. OpenAI gateways return
+   * `{ data: [{ id }] }`. Defaults to that shape so every existing gateway is
+   * unaffected; a provider with a different envelope supplies its own parser.
+   */
+  readonly parseDiscoveryIds?: ((payload: unknown) => readonly string[]) | undefined;
 }
 
 function readFinishReason(value: unknown): FinishReason {
@@ -177,6 +204,16 @@ export function createOpenAiCompatibleProvider(
   const declarations = indexDeclarations(options.declarations);
   const fallbackModelIds = options.fallbackModelIds ?? [];
   const now = options.now ?? (() => new Date());
+  // Deliberately not `?? "/models"`: `null` is a valid value meaning "no
+  // discovery endpoint", and `null ?? default` would silently restore the
+  // default. Only an absent option falls back to the OpenAI path.
+  const modelDiscoveryPath =
+    options.modelDiscoveryPath === undefined ? "/models" : options.modelDiscoveryPath;
+  const healthCheckPath =
+    options.healthCheckPath === undefined
+      ? modelDiscoveryPath
+      : options.healthCheckPath;
+  const parseDiscoveryIds = options.parseDiscoveryIds ?? parseReportedModelIds;
 
   /**
    * Descriptors come from declarations, never from guessing at a model id, so
@@ -192,8 +229,17 @@ export function createOpenAiCompatibleProvider(
         detail: info.configurationDetail ?? "provider is not configured",
       });
     }
-    const payload = await client.requestJson("/models", { method: "GET" });
-    const reported = parseReportedModelIds(payload);
+    // A provider that disables discovery serves its catalog from the operator's
+    // validated declarations alone. This is the Cloudflare path: its documented
+    // discovery endpoint is `/ai/models/search`, whose envelope is not OpenAI-
+    // shaped, so ORVYN would have to parse an undocumented response to learn ids
+    // it already has. The declarations are the source of truth for capabilities,
+    // pricing, and context, so nothing is lost by skipping the probe.
+    if (modelDiscoveryPath === null) {
+      return [...declarations.values().flatMap((map) => [...map.keys()])].map(describe);
+    }
+    const payload = await client.requestJson(modelDiscoveryPath, { method: "GET" });
+    const reported = parseDiscoveryIds(payload);
     // A provider that reports nothing usable still exposes the ids declared for
     // it locally, so configuration alone can describe the catalog.
     const ids = reported.length === 0 ? fallbackModelIds : reported;
@@ -214,7 +260,20 @@ export function createOpenAiCompatibleProvider(
     }
     const startedAt = now();
     try {
-      await client.requestJson("/models", { method: "GET" });
+      if (healthCheckPath === null) {
+        // No documented read-only probe: the provider is reachable by definition
+        // when configured, since generation goes to the same endpoint. Report up
+        // with no latency rather than inventing a probe that may not exist.
+        return {
+          provider: info.id,
+          status: "up",
+          reachable: true,
+          checkedAt: now().toISOString(),
+          latencyMs: 0,
+          detail: null,
+        };
+      }
+      await client.requestJson(healthCheckPath, { method: "GET" });
       return {
         provider: info.id,
         status: "up",

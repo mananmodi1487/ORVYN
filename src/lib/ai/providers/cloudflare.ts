@@ -50,6 +50,21 @@ export const CLOUDFLARE_PROVIDER_ID = "cloudflare";
 export const CLOUDFLARE_ACCOUNT_PREFIX = "https://api.cloudflare.com/client/v4";
 
 /**
+ * Cloudflare's documented model-discovery endpoint.
+ *
+ * `GET /accounts/{account_id}/ai/models/search` — this is the only endpoint
+ * Cloudflare documents for listing models, and it is *not* the OpenAI-
+ * compatible `/v1/models`. ORVYN's architecture treats the operator's validated
+ * declarations as the source of truth for capabilities, pricing, and context,
+ * so Cloudflare serves its catalog from those declarations rather than by
+ * probing an endpoint whose response shape Cloudflare does not document.
+ *
+ * The endpoint is used for health checking only, where a successful 200 is all
+ * that matters and the body is discarded.
+ */
+export const CLOUDFLARE_MODELS_SEARCH_PATH = "/accounts/{account_id}/ai/models/search";
+
+/**
  * Builds the Workers AI base URL from its static prefix and account id.
  *
  * The account id is interpolated here and only here, so a missing or malformed
@@ -62,6 +77,19 @@ export function cloudflareBaseUrl(accountPrefix: string, accountId: string): str
   return `${prefix}/accounts/${id}/ai/v1`;
 }
 
+/**
+ * Builds the absolute URL for Cloudflare's documented discovery endpoint.
+ *
+ * The account id is interpolated here and only here, so it cannot leak into the
+ * generic adapter's URL handling. The caller passes the full URL to the client,
+ * which treats an `https://` target as absolute and uses it verbatim.
+ */
+export function cloudflareHealthCheckUrl(accountPrefix: string, accountId: string): string {
+  const prefix = accountPrefix.replace(/\/+$/, "");
+  const id = accountId.replace(/^\/+|\/+$/g, "");
+  return `${prefix}/accounts/${id}/ai/models/search`;
+}
+
 export function createCloudflareProvider(
   options: CloudflareProviderOptions,
 ): AiProvider {
@@ -72,16 +100,28 @@ export function createCloudflareProvider(
     configured: options.configured,
     configurationDetail: options.configurationDetail ?? null,
   };
-  // An unconfigured provider is constructed but never contacted, so the URL is
+  // An unconfigured provider is constructed but never contacted, so the URLs are
   // allowed to be empty here. A configured one without an account id would be a
   // misconfiguration the resolver should already have rejected.
   const baseUrl =
     options.configured && options.accountId !== undefined && options.accountId !== ""
       ? cloudflareBaseUrl(options.accountPrefix, options.accountId)
       : "";
+  const healthUrl =
+    options.configured && options.accountId !== undefined && options.accountId !== ""
+      ? cloudflareHealthCheckUrl(options.accountPrefix, options.accountId)
+      : "";
   return createOpenAiCompatibleProvider({
     ...options,
     info,
     baseUrl,
+    // Cloudflare does not document an OpenAI-compatible /v1/models endpoint.
+    // Its documented discovery is /ai/models/search, whose envelope is not
+    // OpenAI-shaped. ORVYN serves the Cloudflare catalog from the operator's
+    // validated declarations instead — which is the source of truth for
+    // capabilities, pricing, and context anyway — and uses the documented
+    // endpoint only for health checking.
+    modelDiscoveryPath: null,
+    healthCheckPath: healthUrl,
   });
 }

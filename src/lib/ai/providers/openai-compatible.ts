@@ -52,6 +52,21 @@ export function readErrorMessage(body: unknown): string | undefined {
 }
 
 /**
+ * Resolves a request target against the provider's base URL.
+ *
+ * A target beginning with `http://` or `https://` is treated as absolute and
+ * used verbatim — this is how a provider can hit an endpoint outside the
+ * OpenAI-compatible namespace, such as Cloudflare's documented discovery at
+   * `/accounts/{account_id}/ai/models/search`, without its URL being mangled by
+   * the `/v1` base. Any other target is joined onto the base, which is what
+   * `/models`, `/chat/completions`, and the streaming endpoint all rely on.
+   */
+export function resolveUrl(baseUrl: string, target: string): string {
+  if (/^https?:\/\//i.test(target)) return target;
+  return `${baseUrl}${target.startsWith("/") ? target : `/${target}`}`;
+}
+
+/**
  * Shared request executor for every OpenAI-compatible provider.
  *
  * Owns the parts that must behave identically across providers: auth headers,
@@ -87,6 +102,24 @@ export class OpenAiCompatibleClient {
   }
 
   /**
+   * Issues a JSON request against an absolute URL.
+   *
+   * Some providers expose discovery or health endpoints outside the
+   * OpenAI-compatible namespace — Cloudflare's documented discovery is
+   * `/accounts/{account_id}/ai/models/search`, which lives at the account
+   * root rather than under `/ai/v1`. Joining that path onto the `/v1` base
+   * would produce a wrong URL, so the caller passes the full URL here.
+   *
+   * Auth and error translation are identical to `requestJson`; only the URL
+   * resolution differs. Both go through `readJsonResponse` so the two paths
+   * cannot drift apart.
+   */
+  async requestAbsoluteJson(absoluteUrl: string, init: { method: string; body?: unknown }): Promise<unknown> {
+    const response = await this.sendRequest(absoluteUrl, init, this.#timeoutMs, "application/json");
+    return this.readJsonResponse(response);
+  }
+
+  /**
    * The auth header is applied last so a caller cannot accidentally drop or
    * override it via `defaultHeaders`.
    */
@@ -102,6 +135,16 @@ export class OpenAiCompatibleClient {
 
   async requestJson(path: string, init: { method: string; body?: unknown }): Promise<unknown> {
     const response = await this.sendRequest(path, init, this.#timeoutMs, "application/json");
+    return this.readJsonResponse(response);
+  }
+
+  /**
+   * Reads and validates a JSON response. Shared by `requestJson` and
+   * `requestAbsoluteJson` so the two request paths cannot drift apart — a
+   * provider that returns a non-JSON body must fail the same way regardless of
+   * which URL it was asked.
+   */
+  async readJsonResponse(response: Response): Promise<unknown> {
     const text = await safeReadText(response);
     const parsed = text === "" ? null : tryParseJson(text);
 
@@ -148,7 +191,7 @@ export class OpenAiCompatibleClient {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      return await this.#fetch(this.url(path), {
+      return await this.#fetch(resolveUrl(this.baseUrl, path), {
         method: init.method,
         headers: this.headers({ accept }),
         ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
