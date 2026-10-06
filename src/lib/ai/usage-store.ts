@@ -209,14 +209,39 @@ async function getClient() {
   }
 }
 
-function readTotals(data: unknown, error: unknown): UsageTotals | null {
+export function readTotals(data: unknown, error: unknown): UsageTotals | null {
   if (error !== null || !Array.isArray(data) || data.length === 0) return null;
   const row = data[0];
   if (typeof row !== "object" || row === null) return null;
 
+  /**
+   * Reads one aggregate column into a safe non-negative integer.
+   *
+   * PostgreSQL `bigint`/`int8` aggregates can arrive as decimal strings, so a
+   * strict `typeof value === "number"` check rejected every real total and the
+   * UI fell back to "usage unavailable" even though the RPCs executed fine.
+   *
+   * Acceptance is narrow on purpose: a value must be either a finite JavaScript
+   * number that is a safe non-negative integer, or a decimal string of one —
+   * so `"1204"` is accepted and `"1.5"`, `"-3"`, `"abc"`, `null`, `true`,
+   * and `1.5` are all rejected. The string is only converted to a number
+   * *after* it is confirmed to be a safe integer, which is what keeps the
+   * conversion lossless.
+   */
   const read = (key: string): number | null => {
     const value = (row as Record<string, unknown>)[key];
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
+    if (typeof value === "number") {
+      return Number.isFinite(value) && Number.isInteger(value) && value >= 0 ? value : null;
+    }
+    if (typeof value === "string") {
+      // No trimming: a padded or embedded-whitespace string is not a bigint
+      // value, and accepting it would let a malformed aggregate through.
+      if (!/^[0-9]+$/.test(value)) return null;
+      const asNumber = Number(value);
+      if (!Number.isSafeInteger(asNumber)) return null;
+      return asNumber;
+    }
+    return null;
   };
 
   const inputTokens = read("input_tokens");
