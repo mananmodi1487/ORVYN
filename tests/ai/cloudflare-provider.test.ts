@@ -21,10 +21,7 @@ function recordingFetch(): {
   ) => Promise<Response>;
 } {
   const calls: string[] = [];
-  const fetch = async (
-    input: string,
-    _init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal },
-  ): Promise<Response> => {
+  const fetch = async (input: string): Promise<Response> => {
     calls.push(input);
     // Cloudflare's documented discovery endpoint returns a 200 with a body we
     // discard; health checking only cares that the call succeeded.
