@@ -19,7 +19,6 @@ const SIDEBAR_ID = "orvyn-sidebar";
 const MAIN_ID = "orvyn-main";
 
 export type WorkspaceShellProps = {
-  /** Resolved on the server; this component never decides who is signed in. */
   readonly user: AuthenticatedUser;
 };
 
@@ -28,11 +27,10 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState<ResponseMode>(defaultResponseMode);
   const [draft, setDraft] = useState("");
-  const [showCoding, setShowCoding] = useState(false);
+  const [codingOpen, setCodingOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"chat" | "code">("code");
 
   const conversation = useConversation();
-  // Usage is refetched after each completed reply, so the pool figures here
-  // include the response the transcript just showed.
   const usage = useAccountUsage(conversation.turns.length);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
@@ -88,6 +86,46 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
     conversation.send(text);
     composerRef.current?.focus();
   };
+
+  const toggleCoding = useCallback(() => {
+    setCodingOpen((previous) => {
+      const next = !previous;
+      if (next && !isDesktop) setMobileTab("code");
+      return next;
+    });
+  }, [isDesktop]);
+
+  const chatScrollArea = (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {conversation.turns.length === 0 ? (
+        <WelcomePanel onSelectPrompt={handleSelectPrompt} />
+      ) : (
+        <ConversationTranscript
+          turns={conversation.turns}
+          isStreaming={conversation.isStreaming}
+          error={conversation.error}
+          conversationUsage={conversation.conversationUsage}
+        />
+      )}
+    </div>
+  );
+
+  const messageComposer = (
+    <div className="shrink-0 border-t border-line bg-canvas">
+      <div className="mx-auto w-full max-w-3xl px-5 py-4 sm:px-8 sm:py-5">
+        <MessageComposer
+          value={draft}
+          onValueChange={setDraft}
+          mode={mode}
+          onModeChange={setMode}
+          inputRef={composerRef}
+          onSend={handleSend}
+          isStreaming={conversation.isStreaming}
+          onStop={conversation.stop}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-canvas text-ink">
@@ -147,67 +185,80 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
           />
           <button
             type="button"
-            onClick={() => setShowCoding(!showCoding)}
+            onClick={toggleCoding}
             className={cn(
               "h-14 shrink-0 border-l border-line px-3 text-xs font-medium",
-              showCoding
+              codingOpen
                 ? "bg-ink text-canvas"
                 : "text-ink-muted hover:bg-hover hover:text-ink",
             )}
           >
-            {showCoding ? "Chat" : "Code"}
+            {codingOpen ? "Chat" : "Code"}
           </button>
         </div>
 
-        {showCoding && (
-          <div className="flex items-center justify-between border-b border-line px-4 py-2">
-            <span className="text-sm font-medium text-ink">ORVYN coding</span>
-            <button
-              type="button"
-              onClick={() => setShowCoding(false)}
-              className="text-xs text-ink-muted hover:text-ink"
-            >
-              Close
-            </button>
-          </div>
-        )}
-
-        <main id={MAIN_ID} className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {showCoding ? (
-              agentStatus === "available" ? (
-                <CodingPanel agent={agent} />
-              ) : (
-                <InstallPrompt />
-              )
-            ) : conversation.turns.length === 0 ? (
-              <WelcomePanel onSelectPrompt={handleSelectPrompt} />
-            ) : (
-              <ConversationTranscript
-                turns={conversation.turns}
-                isStreaming={conversation.isStreaming}
-                error={conversation.error}
-                conversationUsage={conversation.conversationUsage}
-              />
+        <main id={MAIN_ID} className="flex min-h-0 flex-1">
+          <div
+            className={cn(
+              "flex min-w-0 flex-col",
+              isDesktop ? "flex-1" : codingOpen ? "hidden" : "flex-1",
             )}
+          >
+            {chatScrollArea}
+            {messageComposer}
           </div>
 
-          <div className="shrink-0 border-t border-line bg-canvas">
-            <div className="mx-auto w-full max-w-3xl px-5 py-4 sm:px-8 sm:py-5">
-              {showCoding ? null : (
-                <MessageComposer
-                  value={draft}
-                  onValueChange={setDraft}
-                  mode={mode}
-                  onModeChange={setMode}
-                  inputRef={composerRef}
-                  onSend={handleSend}
-                  isStreaming={conversation.isStreaming}
-                  onStop={conversation.stop}
-                />
+          {codingOpen && (
+            <div
+              className={cn(
+                "flex flex-col",
+                isDesktop ? "w-[420px] shrink-0 border-l" : "flex-1",
               )}
+            >
+              {!isDesktop && (
+                <div className="flex border-b border-line">
+                  <button
+                    type="button"
+                    onClick={() => setMobileTab("chat")}
+                    className={cn(
+                      "flex-1 px-4 py-2 text-xs font-medium",
+                      mobileTab === "chat"
+                        ? "border-b-2 border-accent text-ink"
+                        : "text-ink-muted",
+                    )}
+                  >
+                    Chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileTab("code")}
+                    className={cn(
+                      "flex-1 px-4 py-2 text-xs font-medium",
+                      mobileTab === "code"
+                        ? "border-b-2 border-accent text-ink"
+                        : "text-ink-muted",
+                    )}
+                  >
+                    Code
+                  </button>
+                </div>
+              )}
+
+              <div className="min-h-0 flex-1">
+                {(mobileTab === "code" || isDesktop) &&
+                agentStatus === "available" ? (
+                  <CodingPanel agent={agent} />
+                ) : (mobileTab === "code" || isDesktop) ? (
+                  <InstallPrompt />
+                ) : (
+                  <div className="flex h-full flex-col">
+                    {chatScrollArea}
+                    {messageComposer}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </main>
       </div>
     </div>
