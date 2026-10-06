@@ -87,6 +87,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const encoder = new TextEncoder();
   let served: ChatStreamMeta | null = null;
+  let pendingUsage: Promise<void> | null = null;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -96,9 +97,25 @@ export async function POST(request: Request): Promise<Response> {
           // the usage row must be attributed to.
           if (event.type === "meta") served = event.model;
           if (event.type === "done" && event.usage !== null && served !== null) {
-            void recordCompletedUsage(served, event.usage);
+            // Enqueue the done frame first so the client sees the completed
+            // answer before anything about bookkeeping. The write is then
+            // awaited before the stream closes: a fire-and-forget here lets the
+            // serverless function end before the Supabase RPC completes, which
+            // is why completed answers could stream with no usage row behind
+            // them. Awaiting it keeps the answer and the counter together.
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+            pendingUsage = recordCompletedUsage(served, event.usage);
+            continue;
           }
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        }
+        // The provider ended cleanly. Await any usage write started for this
+        // response before closing, so the row is persisted while the function
+        // is still alive. Failures are swallowed inside recordCompletedUsage;
+        // a bookkeeping failure still cannot turn a successful answer into an
+        // HTTP error.
+        if (pendingUsage !== null) {
+          await pendingUsage;
         }
       } catch (cause) {
         // `streamChatEvents` reports failures as frames, so reaching here means
@@ -118,7 +135,9 @@ export async function POST(request: Request): Promise<Response> {
     },
     cancel() {
       // Client hung up mid-stream: stop generating instead of paying for tokens
-      // nobody will read.
+      // nobody will read. The usage write for a response the client never
+      // received is not awaited here: the answer was not delivered, so there is
+      // no completed response to account for.
       void events.return(undefined);
     },
   });
@@ -130,7 +149,7 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 /**
- * Persists a completed response's provider-reported usage.
+ * Persists one completed response's provider-reported usage.
  *
  * This is the only place a usage row is ever created, and its only inputs are the
  * serving model and the usage block `streamChatEvents` read out of the provider
@@ -139,9 +158,11 @@ export async function POST(request: Request): Promise<Response> {
  * signed inside `recordUsage`, which is what lets the database refuse anything it
  * did not originate.
  *
- * Deliberately not awaited: the answer has already streamed, and failing it
- * because a bookkeeping row could not be written would trade a real answer for a
- * counter. Failures are swallowed for the same reason.
+ * Failures are swallowed: a usage row is bookkeeping, and failing a completed
+ * answer because the counter could not be written would trade a real answer for
+ * a counter. The caller awaits this function before the stream closes, so a
+ * swallowed failure is logged by the diagnostic in `recordUsage` and the answer
+ * still reaches the client.
  */
 async function recordCompletedUsage(model: ChatStreamMeta, usage: ChatUsage): Promise<void> {
   try {

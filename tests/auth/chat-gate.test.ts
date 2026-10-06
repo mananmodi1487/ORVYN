@@ -59,15 +59,40 @@ describe("POST /api/chat requires a session", () => {
 });
 
 describe("usage recording stays on the signed path", () => {
-  it("still records from the provider-reported usage block only", () => {
+  it("records from the provider-reported usage block only", () => {
     // The gate must not have changed where the numbers come from. They come from
     // the `done` frame, which `streamChatEvents` built from the provider response.
     assert.match(
       route,
       /if \(event\.type === "done" && event\.usage !== null && served !== null\) \{/,
     );
-    assert.match(route, /void recordCompletedUsage\(served, event\.usage\);/);
+    assert.match(route, /pendingUsage = recordCompletedUsage\(served, event\.usage\);/);
     assert.match(route, /await recordUsage\(\{/);
+  });
+
+  it("enqueues the done frame before awaiting the usage write", () => {
+    // Ordering matters: the client must see the completed answer before any
+    // bookkeeping delay, and the write must complete before the stream closes
+    // so a serverless function cannot end mid-write.
+    const doneBlock = route.slice(route.indexOf('if (event.type === "done"'));
+    const enqueueAt = doneBlock.indexOf("controller.enqueue");
+    const awaitAt = doneBlock.indexOf("pendingUsage = recordCompletedUsage");
+    assert.ok(enqueueAt > -1, "the done frame must be enqueued");
+    assert.ok(awaitAt > enqueueAt, "the usage write must start after the frame is enqueued");
+  });
+
+  it("awaits the usage write before the stream closes", () => {
+    // The usage write is awaited after the done frame is enqueued and before the
+    // stream's `finally` block runs `controller.close()`. Awaiting it before
+    // close is what keeps the serverless function alive until the Supabase RPC
+    // completes; awaiting it after close would race the function ending.
+    const finallyAt = route.indexOf("} finally {");
+    const closeAt = route.indexOf("controller.close()", finallyAt);
+    const pendingAwaitAt = route.indexOf("await pendingUsage");
+    assert.ok(pendingAwaitAt > -1, "the usage write must be awaited");
+    assert.ok(pendingAwaitAt < finallyAt,
+      "the usage write must be awaited before the stream's finally block closes it");
+    assert.ok(closeAt > finallyAt, "controller.close() must run inside the finally block");
   });
 
   it("never reads a token count from the request", () => {
