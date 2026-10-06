@@ -295,6 +295,46 @@ describe("the write store refuses to record anything it cannot sign", () => {
     }
   });
 
+  it("emits a safe diagnostic line when recording fails", async () => {
+    // The failure must be diagnosable without exposing the secret, the
+    // signature, the nonce, the token counts, or the user id. Only a stable
+    // category, the provider/model identifier, and an error detail may appear.
+    const previous = process.env[USAGE_SIGNING_SECRET_VAR];
+    delete process.env[USAGE_SIGNING_SECRET_VAR];
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+    try {
+      await recordUsage({
+        provider: "cloudflare",
+        modelId: "@cf/meta/llama-3.2-1b-instruct",
+        inputTokens: 12,
+        outputTokens: 10,
+      });
+    } finally {
+      console.error = original;
+      if (previous === undefined) delete process.env[USAGE_SIGNING_SECRET_VAR];
+      else process.env[USAGE_SIGNING_SECRET_VAR] = previous;
+    }
+
+    assert.ok(lines.length > 0, "a failure must produce a diagnostic line");
+    const line = lines[0] as string;
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+    assert.equal(parsed.event, "usage_record_failed");
+    assert.equal(parsed.category, "signing_secret_missing");
+    assert.equal(parsed.provider, "cloudflare");
+    assert.equal(parsed.modelId, "@cf/meta/llama-3.2-1b-instruct");
+    assert.equal(typeof parsed.at, "string");
+    // Nothing that could be replayed or used to reconstruct a secret. The variable
+    // *name* is safe — it is public, in `.env.example` — so the ban is on secret
+    // *values*, signatures, nonces, and token counts, not on the word "secret".
+    for (const forbidden of ["signature", "nonce", "hmac", "1204", "88", "a".repeat(64)]) {
+      assert.ok(!line.includes(forbidden), `diagnostic must not contain "${forbidden}"`);
+    }
+    const detail = typeof parsed.detail === "string" ? parsed.detail : "";
+    assert.ok(!/token/i.test(detail), "detail must not carry token counts");
+  });
+
   it("never writes to the table directly", () => {
     // A direct insert would be subject to RLS as the caller, which is the whole
     // hole being closed. The only statement that writes is the RPC.

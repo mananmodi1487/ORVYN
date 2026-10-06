@@ -64,15 +64,77 @@ export const UNAVAILABLE_SUMMARY: UsageSummary = {
  * answer because the counter could not be written would be the worse outcome.
  * Returns whether the row was written.
  */
+/**
+ * Writes a single safe diagnostic line for a usage-recording failure.
+ *
+ * This exists only to make a silent failure diagnosable. It deliberately logs
+ * nothing that could be replayed, forged, or used to reconstruct a secret:
+ *
+ *   - the signing secret is never read here and never logged;
+ *   - the HMAC signature is generated downstream and never reaches this logger;
+ *   - the request nonce is unique per response and is not logged;
+ *   - token counts are usage data, not credentials, but they are also not needed
+ *     to identify *why* a write failed, so they stay out;
+ *   - the user id is PII and is not logged.
+ *
+ * What is logged is the smallest set that distinguishes the known failure modes:
+ * a stable category, the Supabase RPC error code and message when one exists,
+ * and the provider/model identifier so an operator can correlate a failing
+ * model with the accounting gap.
+ *
+ * This does not change which writes succeed or fail, and it does not change the
+ * caller's return value. It is additive and server-side only.
+ */
+function logUsageFailure(
+  category: "signing_secret_missing" | "supabase_unconfigured" | "no_session" | "rpc_rejected",
+  provider: string,
+  modelId: string,
+  detail: string,
+): void {
+  // Structured, one line, JSON-shaped so it is grep-able without parsing prose.
+  console.error(JSON.stringify({
+    event: "usage_record_failed",
+    category,
+    provider,
+    modelId,
+    detail,
+    at: new Date().toISOString(),
+  }));
+}
+
 export async function recordUsage(record: UsageRecord): Promise<boolean> {
   const secret = resolveUsageSigningSecret();
-  if (secret === null) return false;
+  if (secret === null) {
+    logUsageFailure(
+      "signing_secret_missing",
+      record.provider,
+      record.modelId,
+      "ORVYN_USAGE_SIGNING_SECRET is not set",
+    );
+    return false;
+  }
 
   const client = await getClient();
-  if (client === null) return false;
+  if (client === null) {
+    logUsageFailure(
+      "supabase_unconfigured",
+      record.provider,
+      record.modelId,
+      "Supabase is not configured",
+    );
+    return false;
+  }
 
   const { data, error } = await client.auth.getUser();
-  if (error !== null || data.user === null) return false;
+  if (error !== null || data.user === null) {
+    logUsageFailure(
+      "no_session",
+      record.provider,
+      record.modelId,
+      error === null ? "no authenticated session" : error.message,
+    );
+    return false;
+  }
 
   const nonce = newUsageNonce();
   const payload = usageSigningPayload({
@@ -92,6 +154,15 @@ export async function recordUsage(record: UsageRecord): Promise<boolean> {
     p_nonce: nonce,
     p_signature: signUsagePayload(secret, payload),
   });
+
+  if (rpcError !== null) {
+    logUsageFailure(
+      "rpc_rejected",
+      record.provider,
+      record.modelId,
+      rpcError.message,
+    );
+  }
 
   return rpcError === null;
 }
