@@ -27,28 +27,28 @@
   /* Depth stack, darkest to lightest. Wider gaps than a colourful system needs:
      with no hue to separate surfaces, luminance has to do the work. */
   --canvas: oklch(0.145 0.002 285);
-  --surface: oklch(0.178 0.002 285);
-  --surface-raised: oklch(0.215 0.002 285);
+  --surface: oklch(0.185 0.002 285);
+  --surface-raised: oklch(0.225 0.002 285);
   --surface-inset: oklch(0.118 0.002 285);
 
   /* Typography */
   --ink: oklch(0.975 0 0);
-  --ink-muted: oklch(0.688 0.002 285);
-  --ink-subtle: oklch(0.512 0.003 285);
+  --ink-muted: oklch(0.82 0.002 285);
+  --ink-subtle: oklch(0.68 0.002 285);
 
-  /* Structure. Borders carry most of the layout here, so they are faint. */
-  --line: oklch(0.262 0.002 285);
-  --line-strong: oklch(0.372 0.003 285);
+  /* Structure. Borders carry most of the layout here, so they are visible but not bright. */
+  --line: oklch(0.32 0.002 285);
+  --line-strong: oklch(0.44 0.003 285);
 
   /* Primary action and focus. A light neutral, not a brand colour. */
   --accent: oklch(0.965 0 0);
   --accent-strong: oklch(1 0 0);
   --accent-ink: oklch(0.16 0.002 285);
-  --accent-muted: oklch(0.262 0.002 285);
+  --accent-muted: oklch(0.32 0.002 285);
 
   /* Interaction states */
-  --hover: oklch(1 0 0 / 0.045);
-  --active: oklch(1 0 0 / 0.075);
+  --hover: oklch(1 0 0 / 0.07);
+  --active: oklch(1 0 0 / 0.12);
 
   /* Destructive */
   --danger: oklch(0.63 0.17 25);
