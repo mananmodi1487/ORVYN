@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usageCopy } from "@/config/workspace";
-import type { ChatStreamError, ChatStreamMeta, ChatUsage } from "@/lib/ai/chat-protocol";
+import type { ChatStreamError, ChatUsage } from "@/lib/ai/chat-protocol";
 import type { ConversationTurn } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { AlertIcon } from "./icons";
@@ -12,7 +12,6 @@ export type ConversationTranscriptProps = {
   readonly turns: readonly ConversationTurn[];
   readonly isStreaming: boolean;
   readonly error: ChatStreamError | null;
-  readonly activeModel: ChatStreamMeta | null;
   /** Running total across every response that reported usage. */
   readonly conversationUsage: ChatUsage | null;
 };
@@ -28,7 +27,6 @@ export function ConversationTranscript({
   turns,
   isStreaming,
   error,
-  activeModel,
   conversationUsage,
 }: ConversationTranscriptProps) {
   const endRef = useRef<HTMLDivElement>(null);
@@ -46,13 +44,12 @@ export function ConversationTranscript({
       {turns.map((turn, index) => {
         const isLast = index === turns.length - 1;
         const pending = isLast && turn.role === "assistant" && turn.text === "";
-        if (pending) return <PendingAnswer key={turn.id} model={activeModel} />;
+        if (pending) return <PendingAnswer key={turn.id} />;
 
         return (
           <Turn
             key={turn.id}
             turn={turn}
-            model={turn.role === "assistant" ? activeModel : null}
             streaming={isLast && isStreaming}
           />
         );
@@ -78,11 +75,9 @@ export function ConversationTranscript({
 
 function Turn({
   turn,
-  model,
   streaming,
 }: {
   readonly turn: ConversationTurn;
-  readonly model: ChatStreamMeta | null;
   readonly streaming: boolean;
 }) {
   const isUser = turn.role === "user";
@@ -107,29 +102,24 @@ function Turn({
             ) : null}
           </div>
           {/* Provenance and cost sit below the answer, quiet by design: they are
-              reference material, not part of the conversation. */}
-          {streaming || model === null ? null : (
+              reference material, not part of the conversation. The provider and
+              model are internal routing details, so only ORVYN is named here. */}
+          {!streaming ? (
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5">
-              <p className="text-[11px] text-ink-subtle">
-                {model.displayName}
-                <span aria-hidden="true"> · </span>
-                <span className="text-ink-subtle/80">{model.provider}</span>
-              </p>
+              <p className="text-[11px] text-ink-subtle">ORVYN</p>
               <UsageMeta usage={turn.usage ?? null} />
             </div>
-          )}
+          ) : null}
         </>
       )}
     </article>
   );
 }
 
-function PendingAnswer({ model }: { readonly model: ChatStreamMeta | null }) {
+function PendingAnswer() {
   return (
     <div className="flex flex-col gap-2" aria-label="ORVYN is replying">
-      {model !== null ? (
-        <p className="text-[11px] tracking-wide text-ink-subtle">{model.displayName}</p>
-      ) : null}
+      <p className="text-[11px] tracking-wide text-ink-subtle">ORVYN</p>
       <div className="flex items-center gap-1.5 py-1">
         <span className="sr-only">ORVYN is replying</span>
         {[0, 1, 2].map((dot) => (

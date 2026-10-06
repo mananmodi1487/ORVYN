@@ -148,7 +148,6 @@ onNewConversation={handleNewConversation}
                 turns={conversation.turns}
                 isStreaming={conversation.isStreaming}
                 error={conversation.error}
-                activeModel={conversation.activeModel}
                 conversationUsage={conversation.conversationUsage}
               />
             )}
