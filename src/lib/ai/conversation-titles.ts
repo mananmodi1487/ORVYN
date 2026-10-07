@@ -18,12 +18,26 @@ import type { AiGateway } from "./gateway";
 import { getAiGateway } from "./runtime";
 import type { ChatRequest } from "./types";
 
-/** How a model is asked to title a conversation. */
+/**
+ * How a model is asked to title a conversation.
+ *
+ * The prompt is the entire quality budget for a title. A vague ask —
+ * "captures what the conversation is about" — lets a model file the
+ * message under a generic bucket, answering "a gaming website for my
+ * YouTube channel" with "Web Development". So the prompt names that
+ * failure mode, demands the user's own topic words, bounds the
+ * length, and forbids details the message never mentioned. The
+ * title-only output contract keeps `toTitle` a cleaner rather than a
+ * parser.
+ */
 const TITLE_SYSTEM_PROMPT =
-  "You write titles for chat conversations. Given the first message, " +
-  "respond with a title of at most five words that captures what the " +
-  "conversation is about. Reply with the title only: no quotes, no " +
-  "greeting, no explanation.";
+  "Title the conversation from its first message. Keep the specific " +
+  "topics, products, and subjects the user names: a request for a " +
+  "gaming website for a YouTube channel is titled \"Gaming YouTube " +
+  "Website\", never a generic label such as \"Web Development\", " +
+  "\"Programming\", \"General Question\", or \"Help\". Two to six " +
+  "words, using only terms the message contains — invent nothing. " +
+  "Reply with the title only: no quotes, no greeting, no explanation.";
 
 /** One title is a few words; the cap keeps a runaway model from writing an essay. */
 const MAX_OUTPUT_TOKENS = 32;

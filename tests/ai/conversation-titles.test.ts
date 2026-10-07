@@ -51,6 +51,24 @@ describe("title request", () => {
     assert.equal(request.pinnedModel, undefined);
     assert.ok((request.maxOutputTokens ?? 0) > 0, "a title is a few tokens");
   });
+
+  it("asks for the user's own topics, not a generic label", () => {
+    const request = titleRequest(
+      "I want to build a gaming website for my YouTube channel.",
+    );
+    const system = request.messages[0]?.content ?? "";
+
+    // The prompt is the whole quality budget: it must demand
+    // the topics the user actually named, name the generic-
+    // label failure mode, bound the length, and forbid
+    // invented details — while keeping the title-only output
+    // contract `toTitle` relies on.
+    assert.match(system, /specific topics/i);
+    assert.match(system, /generic label/i);
+    assert.match(system, /two to six words/i);
+    assert.match(system, /invent nothing/i);
+    assert.match(system, /title only/i);
+  });
 });
 
 describe("toTitle", () => {
@@ -99,6 +117,30 @@ describe("generateTitle", () => {
       provider.calls.stream.length,
       0,
       "a title is one generation, never a stream",
+    );
+  });
+
+  it("titles the representative request with its own topics", async () => {
+    // The flagship example: the user named a gaming website
+    // for a YouTube channel, so the title keeps those terms
+    // rather than filing the message under "Web Development".
+    const provider = createFakeProvider({
+      id: "freellmapi",
+      models: [
+        makeModel({ provider: "freellmapi", modelId: "free-small" }),
+      ],
+      content: "Gaming YouTube Website",
+    });
+
+    const title = await generateTitle(
+      "I want to build a gaming website for my YouTube channel.",
+      gatewayWith(provider),
+    );
+
+    assert.equal(title, "Gaming YouTube Website");
+    assert.deepEqual(
+      provider.calls.generate.map((ref) => ref.modelId),
+      ["free-small"],
     );
   });
 
