@@ -33,6 +33,12 @@ const navIcons: Readonly<Record<SidebarNavId, ComponentType<IconProps>>> = {
   settings: SettingsIcon,
 };
 
+export type ConversationItem = {
+  readonly id: string;
+  readonly title: string;
+  readonly updatedAt: string;
+};
+
 export type AppSidebarProps = {
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -42,6 +48,9 @@ export type AppSidebarProps = {
   usage: UseAccountUsage;
   /** `null` only while the session is still being resolved. */
   user: AuthenticatedUser | null;
+  conversations: readonly ConversationItem[];
+  onSelectConversation: (id: string) => void;
+  activeConversationId: string | null;
 };
 
 export function AppSidebar({
@@ -52,6 +61,9 @@ export function AppSidebar({
   onNewConversation,
   usage,
   user,
+  conversations,
+  onSelectConversation,
+  activeConversationId,
 }: AppSidebarProps) {
   const today = usage.summary?.userDaily ?? null;
 
@@ -109,14 +121,38 @@ export function AppSidebar({
           >
             {conversationsSection.label}
           </p>
-          <p className={cn("px-2 text-[13px] text-ink-muted", collapsed && "lg:hidden")}>
-            {conversationEmptyState.title}
-          </p>
-          <p
-            className={cn("mt-0.5 px-2 text-xs leading-relaxed text-ink-subtle", collapsed && "lg:hidden")}
-          >
-            {conversationEmptyState.description}
-          </p>
+          {conversations.length === 0 ? (
+            <>
+              <p className={cn("px-2 text-[13px] text-ink-muted", collapsed && "lg:hidden")}>
+                {conversationEmptyState.title}
+              </p>
+              <p
+                className={cn("mt-0.5 px-2 text-xs leading-relaxed text-ink-subtle", collapsed && "lg:hidden")}
+              >
+                {conversationEmptyState.description}
+              </p>
+            </>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {conversations.map((conversation) => (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => onSelectConversation(conversation.id)}
+                  className={cn(
+                    "w-full truncate rounded-md px-2 py-1.5 text-left text-[13px] transition-colors duration-150",
+                    activeConversationId === conversation.id
+                      ? "bg-hover text-ink"
+                      : "text-ink-muted hover:bg-hover hover:text-ink",
+                    collapsed && "lg:justify-center lg:px-0",
+                  )}
+                  title={conversation.title || "New conversation"}
+                >
+                  {conversation.title || "New conversation"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex flex-col gap-0.5">

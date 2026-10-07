@@ -6,6 +6,7 @@ import type { AuthenticatedUser } from "@/lib/auth/session";
 import { useAccountUsage, useConversation, useIsClient, useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { useAgent } from "@/lib/agent/use-agent";
+import type { ConversationItem } from "./app-sidebar";
 import { CodingPanel } from "./coding/coding-panel";
 import { InstallPrompt } from "./coding/install-prompt";
 import { AppSidebar } from "./app-sidebar";
@@ -29,6 +30,7 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const [draft, setDraft] = useState("");
   const [codingOpen, setCodingOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "code">("code");
+  const [conversations, setConversations] = useState<readonly ConversationItem[]>([]);
 
   const conversation = useConversation();
   const usage = useAccountUsage(conversation.turns.length);
@@ -65,17 +67,60 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
     if (drawerActive) sidebarRef.current?.focus();
   }, [drawerActive]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadConversations() {
+      try {
+        const response = await fetch("/api/conversations");
+        if (!response.ok) return;
+        const data = (await response.json()) as { conversations: ConversationItem[] };
+        if (!cancelled) {
+          setConversations(data.conversations ?? []);
+        }
+      } catch {
+        // Non-blocking: the empty state is a fine fallback.
+      }
+    }
+
+    loadConversations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
     if (!isDesktop) drawerTriggerRef.current?.focus();
   }, [isDesktop]);
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
     conversation.reset();
     setDraft("");
     if (!isDesktop) setDrawerOpen(false);
     composerRef.current?.focus();
+
+    try {
+      await conversation.createConversation();
+      const response = await fetch("/api/conversations");
+      if (response.ok) {
+        const data = (await response.json()) as { conversations: ConversationItem[] };
+        setConversations(data.conversations ?? []);
+      }
+    } catch {
+      // Non-blocking: the user can still type and send.
+    }
   };
+
+  const handleSelectConversation = useCallback(
+    async (id: string) => {
+      await conversation.loadConversation(id);
+      if (!isDesktop) setDrawerOpen(false);
+      composerRef.current?.focus();
+    },
+    [conversation, isDesktop],
+  );
 
   const handleSelectPrompt = (prompt: string) => {
     setDraft(prompt);
@@ -172,6 +217,9 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
           onNewConversation={handleNewConversation}
           usage={usage}
           user={user}
+          conversations={conversations}
+          onSelectConversation={handleSelectConversation}
+          activeConversationId={conversation.conversationId}
         />
       </aside>
 

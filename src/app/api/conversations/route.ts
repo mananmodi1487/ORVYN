@@ -1,0 +1,77 @@
+import { createClient } from "@/utils/supabase/server";
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+
+type ConversationRow = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
+
+type ConversationSummary = {
+  id: string;
+  title: string;
+  updatedAt: string;
+};
+
+/**
+ * Lists the signed-in user's conversations, newest first.
+ *
+ * Failures are reported as error responses, never as an empty list:
+ * the sidebar renders `[]` as "No conversations yet", so swallowing a
+ * database error here would hide a broken schema behind a plausible
+ * empty state.
+ */
+export async function GET() {
+  const client = await createClient();
+
+  const { data: auth } = await client.auth.getUser();
+  if (auth.user === null) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
+  const { data, error } = await client
+    .from("conversations")
+    .select("id, title, updated_at")
+    .eq("user_id", auth.user.id)
+    .order("updated_at", { ascending: false });
+
+  if (error !== null) {
+    return NextResponse.json({ error: "failed_to_list" }, { status: 500 });
+  }
+
+  const conversations: ConversationSummary[] = (
+    (data ?? []) as ConversationRow[]
+  ).map((row) => ({
+    id: row.id,
+    title: row.title,
+    updatedAt: row.updated_at,
+  }));
+
+  return NextResponse.json({ conversations });
+}
+
+/**
+ * Creates a new empty conversation for the signed-in user.
+ */
+export async function POST() {
+  const client = await createClient();
+
+  const { data: auth } = await client.auth.getUser();
+  if (auth.user === null) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
+  const { data, error } = await client
+    .from("conversations")
+    .insert({ user_id: auth.user.id, title: "" })
+    .select("id, title, created_at, updated_at")
+    .single();
+
+  if (error !== null || data === null) {
+    return NextResponse.json({ error: "failed_to_create" }, { status: 500 });
+  }
+
+  return NextResponse.json({ conversation: data });
+}
