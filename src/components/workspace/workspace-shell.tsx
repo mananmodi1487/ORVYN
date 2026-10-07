@@ -236,6 +236,7 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
           user={user}
           conversations={conversations}
           onSelectConversation={handleSelectConversation}
+          onPrefetchConversation={conversation.prefetchConversation}
           activeConversationId={conversation.conversationId}
         />
       </aside>

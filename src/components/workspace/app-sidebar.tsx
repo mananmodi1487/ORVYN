@@ -50,6 +50,8 @@ export type AppSidebarProps = {
   user: AuthenticatedUser | null;
   conversations: readonly ConversationItem[];
   onSelectConversation: (id: string) => void;
+  /** Warms the conversation cache without navigating. */
+  onPrefetchConversation?: (id: string) => void;
   activeConversationId: string | null;
 };
 
@@ -63,6 +65,7 @@ export function AppSidebar({
   user,
   conversations,
   onSelectConversation,
+  onPrefetchConversation,
   activeConversationId,
 }: AppSidebarProps) {
   const today = usage.summary?.userDaily ?? null;
@@ -139,6 +142,8 @@ export function AppSidebar({
                   key={conversation.id}
                   type="button"
                   onClick={() => onSelectConversation(conversation.id)}
+                  onMouseEnter={() => onPrefetchConversation?.(conversation.id)}
+                  onFocus={() => onPrefetchConversation?.(conversation.id)}
                   className={cn(
                     "w-full truncate rounded-md px-2 py-1.5 text-left text-[13px] transition-colors duration-150",
                     activeConversationId === conversation.id

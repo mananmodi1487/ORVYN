@@ -1,3 +1,7 @@
+export {
+  conversationCache,
+  type ConversationCache,
+} from "./conversation-cache";
 export { useAccountUsage, type UseAccountUsage } from "./use-account-usage";
 export {
   useConversation,

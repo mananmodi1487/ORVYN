@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   parseChatStreamEvent,
   type ChatStreamError,
@@ -10,6 +10,7 @@ import {
   type ChatUsage,
 } from "@/lib/ai/chat-protocol";
 import { sumUsage } from "@/lib/ai/usage";
+import { conversationCache } from "./conversation-cache";
 
 const ENDPOINT = "/api/chat";
 
@@ -29,6 +30,8 @@ export type UseConversation = {
   reset: () => void;
   loadConversation: (id: string) => Promise<void>;
   createConversation: () => Promise<string>;
+  /** Warms the cache for a conversation without opening it. */
+  prefetchConversation: (id: string) => void;
 };
 
 export type UseConversationOptions = {
@@ -50,47 +53,104 @@ export function useConversation(
   const [activeModel, setActiveModel] = useState<ChatStreamMeta | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
-  const turnsRef = useRef<ConversationTurn[]>([]);
+  const turnsRef = useRef<readonly ConversationTurn[]>([]);
   const controllerRef = useRef<AbortController | null>(null);
   /** Texts sent before a conversation row could be created. */
   const pendingTurnsRef = useRef<readonly string[]>([]);
+  /** The conversation the view is on, readable from async callbacks. */
+  const conversationIdRef = useRef<string | null>(null);
 
-  const commit = useCallback((next: ConversationTurn[]) => {
+  const commit = useCallback((next: readonly ConversationTurn[]) => {
     turnsRef.current = next;
     setTurns(next);
   }, []);
 
-  const loadConversation = useCallback(async (id: string) => {
-    setError(null);
-    setActiveModel(null);
-    setIsStreaming(false);
-    controllerRef.current?.abort();
-    controllerRef.current = null;
-    pendingTurnsRef.current = [];
+  /** Moves the view to a conversation (or to none), keeping the
+   *  ref the async load paths read in step with the state. */
+  const openConversation = useCallback((id: string | null) => {
+    conversationIdRef.current = id;
+    setConversationId(id);
+  }, []);
 
-    try {
-      const response = await fetch(`/api/conversations/${id}`);
-      if (!response.ok) {
-        throw new Error("failed_to_load");
+  // Subscribes the hook to the conversation cache: a write — a
+  // background revalidation landing, a prefetch completing, a
+  // finished answer being cached — bumps the snapshot version
+  // and re-renders here, where the effect below follows it.
+  const cacheVersion = useSyncExternalStore(
+    conversationCache.subscribe,
+    conversationCache.getSnapshot,
+  );
+
+  // Keeps the view in step with the cache for the open
+  // conversation. A cached entry renders the moment its
+  // conversation is opened; this effect is what lands the
+  // server's reconciliation — and any prefetch that completed
+  // first — without the open having to wait for either.
+  // Skipped while streaming, because the stream owns the
+  // screen until it ends.
+  useEffect(() => {
+    if (conversationId === null || isStreaming) return;
+    const cached = conversationCache.getTurns(conversationId);
+    if (cached === undefined || sameTurns(turnsRef.current, cached)) return;
+    commit(cached);
+  }, [cacheVersion, conversationId, isStreaming, commit]);
+
+  const loadConversation = useCallback(
+    (id: string): Promise<void> => {
+      setError(null);
+      setActiveModel(null);
+      setIsStreaming(false);
+      // Switching away mid-stream cancels it: the answer the
+      // user saw is still persisted, but no further deltas
+      // belong to the conversation being left.
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingTurnsRef.current = [];
+
+      // The conversation is open from this call onward: the
+      // sidebar's active state follows immediately, and a
+      // cached entry renders without waiting for the network.
+      openConversation(id);
+      const cached = conversationCache.getTurns(id);
+      if (cached !== undefined && !sameTurns(turnsRef.current, cached)) {
+        commit(cached);
       }
-      const data = (await response.json()) as {
-        conversation: { id: string };
-        messages: Array<{ role: string; content: string }>;
-      };
 
-      const loadedTurns: ConversationTurn[] = data.messages.map((msg) => ({
-        id: newId(),
-        role: msg.role as "user" | "assistant",
-        text: msg.content,
-      }));
+      // Revalidate in the background. The open does not wait
+      // for it: a cold open keeps whatever is on screen —
+      // the existing loading state — until the response
+      // arrives and the cache subscription commits it.
+      conversationCache.load(id, () => fetchConversationTurns(id)).catch(() => {
+        // Nothing was cached and the server could not be
+        // read: the existing failure behavior is an empty
+        // conversation. A cached conversation survives a
+        // failed revalidation with its cached turns.
+        if (conversationIdRef.current === id && !conversationCache.has(id)) {
+          commit([]);
+          openConversation(null);
+        }
+      });
 
-      commit(loadedTurns);
-      setConversationId(data.conversation.id);
-    } catch {
-      commit([]);
-      setConversationId(null);
-    }
-  }, [commit]);
+      return Promise.resolve();
+    },
+    [commit, openConversation],
+  );
+
+  /**
+   * Warms the cache for a conversation without opening it,
+   * so the click that follows renders from the cache. Called
+   * from the sidebar on hover and focus; navigation itself
+   * is unchanged. A prefetch that fails is silent: opening
+   * the conversation starts the load again.
+   */
+  const prefetchConversation = useCallback((id: string) => {
+    if (conversationCache.has(id) || conversationCache.isPending(id)) return;
+    void conversationCache
+      .load(id, () => fetchConversationTurns(id))
+      .catch(() => {
+        // Invisible by design: the next open retries.
+      });
+  }, []);
 
   const createConversation = useCallback(async (): Promise<string> => {
     const response = await fetch("/api/conversations", {
@@ -101,10 +161,10 @@ export function useConversation(
     }
     const data = (await response.json()) as { conversation: { id: string } };
     const id = data.conversation.id;
-    setConversationId(id);
+    openConversation(id);
     onConversationCreated?.(id);
     return id;
-  }, [onConversationCreated]);
+  }, [onConversationCreated, openConversation]);
 
   const persistMessage = useCallback(
     (conversationId: string, role: "user" | "assistant", content: string) => {
@@ -213,6 +273,18 @@ export function useConversation(
           // belongs in the conversation's record.
           if (currentConversationId && answer !== "") {
             persistMessage(currentConversationId, "assistant", answer);
+            // The completed exchange is what the server will
+            // hold, so this conversation opens from the cache
+            // next time.
+            conversationCache.setTurns(currentConversationId, [
+              ...history,
+              {
+                id: assistantId,
+                role: "assistant",
+                text: answer,
+                ...(usage === null ? {} : { usage }),
+              },
+            ]);
           }
         });
     },
@@ -229,10 +301,10 @@ export function useConversation(
     setIsStreaming(false);
     setError(null);
     setActiveModel(null);
-    setConversationId(null);
+    openConversation(null);
     pendingTurnsRef.current = [];
     commit([]);
-  }, [commit]);
+  }, [commit, openConversation]);
 
   return {
     turns,
@@ -246,7 +318,54 @@ export function useConversation(
     reset,
     loadConversation,
     createConversation,
+    prefetchConversation,
   };
+}
+
+/**
+ * The conversation's turns from the server, in the shape
+ * the transcript renders. The same `GET /api/conversations/[id]`
+ * endpoint as before — the cache changes when the conversation
+ * is asked, not what is asked.
+ */
+async function fetchConversationTurns(
+  id: string,
+): Promise<readonly ConversationTurn[]> {
+  const response = await fetch(`/api/conversations/${id}`);
+  if (!response.ok) {
+    throw new Error("failed_to_load");
+  }
+  const data = (await response.json()) as {
+    conversation: { id: string };
+    messages: Array<{ role: string; content: string }>;
+  };
+
+  return data.messages.map((msg) => ({
+    id: newId(),
+    role: msg.role as "user" | "assistant",
+    text: msg.content,
+  }));
+}
+
+/**
+ * Whether two turn lists carry the same conversation content.
+ * Turn ids are client-generated and change on every load, so
+ * identity is compared on what the server knows: the roles
+ * and texts, in order. This keeps a rendered conversation on
+ * screen when a revalidation lands with the same content,
+ * instead of remounting every turn with fresh ids.
+ */
+function sameTurns(
+  previous: readonly ConversationTurn[],
+  next: readonly ConversationTurn[],
+): boolean {
+  if (previous.length !== next.length) return false;
+  return previous.every((turn, index) => {
+    const other = next[index];
+    return (
+      other !== undefined && turn.role === other.role && turn.text === other.text
+    );
+  });
 }
 
 function sumConversationUsage(turns: readonly ConversationTurn[]): ChatUsage | null {
