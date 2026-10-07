@@ -42,7 +42,15 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const conversation = useConversation({
     onConversationCreated: handleConversationCreated,
   });
-  const usage = useAccountUsage(conversation.turns.length);
+  // Usage figures change only when a reply with reported
+  // usage completes. Historical turns loaded from a
+  // conversation carry no usage of their own, so keying on
+  // the turn count would refetch on every conversation
+  // opened.
+  const usageRefreshKey = conversation.turns.filter(
+    (turn) => turn.usage !== undefined,
+  ).length;
+  const usage = useAccountUsage(usageRefreshKey);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const isClient = useIsClient();

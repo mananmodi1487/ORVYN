@@ -26,6 +26,11 @@ const messagesRoute = readFileSync(
   "utf8",
 );
 
+const detailRoute = readFileSync(
+  new URL("../../src/app/api/conversations/[id]/route.ts", import.meta.url),
+  "utf8",
+);
+
 const hook = readFileSync(
   new URL("../../src/lib/hooks/use-conversation.ts", import.meta.url),
   "utf8",
@@ -73,6 +78,52 @@ describe("GET /api/conversations/[id]/messages reports failures honestly", () =>
     const handler = messagesRoute.slice(messagesRoute.indexOf("export async function GET"));
     assert.ok(!/status: 200/.test(handler));
     assert.match(handler, /status: 500/);
+  });
+});
+
+describe("GET /api/conversations/[id] opens a conversation in one round trip", () => {
+  // The DELETE handler below still uses getUser(); the slice keeps
+  // the assertions scoped to the open path.
+  const handler = detailRoute.slice(
+    detailRoute.indexOf("export async function GET"),
+    detailRoute.indexOf("export async function DELETE"),
+  );
+
+  it("identifies the caller from locally decoded claims", () => {
+    // getClaims() decodes the session JWT locally with a signing
+    // key fetched once per process; getUser() would validate the
+    // session against GoTrue on every conversation open.
+    assert.match(handler, /getClaims\(\)/);
+    assert.ok(
+      !handler.includes("getUser()"),
+      "the open path must not call GoTrue",
+    );
+  });
+
+  it("fetches the conversation and its messages in a single query", () => {
+    assert.match(handler, /\.from\("conversations"\)/);
+    assert.match(handler, /messages\(id, role, content, created_at\)/);
+    assert.ok(
+      !handler.includes('.from("messages")'),
+      "a separate messages query would be a second round trip",
+    );
+  });
+
+  it("scopes the row to the signed-in user", () => {
+    assert.match(handler, /\.eq\("user_id", userId\)/);
+  });
+
+  it("answers 401, 404 and 500 distinctly", () => {
+    assert.match(handler, /status: 401/);
+    assert.match(handler, /status: missing \? 404 : 500/);
+  });
+
+  it("treats a .single() miss as not-found, not a failure", () => {
+    assert.match(handler, /PGRST116/);
+  });
+
+  it("restores the chronological order PostgREST does not promise", () => {
+    assert.match(handler, /localeCompare\(b\.created_at\)/);
   });
 });
 
