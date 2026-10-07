@@ -38,6 +38,8 @@ export type ConversationItem = {
   readonly id: string;
   readonly title: string;
   readonly updatedAt: string;
+  /** `null` while the conversation is not pinned. */
+  readonly pinnedAt: string | null;
 };
 
 export type AppSidebarProps = {
@@ -58,6 +60,15 @@ export type AppSidebarProps = {
     id: string,
     title: string,
   ) => Promise<string | null>;
+  /** Pins or unpins a conversation; resolves with an error message, or `null` on success. */
+  onPinConversation: (
+    id: string,
+    pinned: boolean,
+  ) => Promise<string | null>;
+  /** Archives a conversation; resolves with an error message, or `null` on success. */
+  onArchiveConversation: (
+    id: string,
+  ) => Promise<string | null>;
   /** Deletes a conversation; resolves with an error message, or `null` on success. */
   onDeleteConversation: (id: string) => Promise<string | null>;
   activeConversationId: string | null;
@@ -75,6 +86,8 @@ export function AppSidebar({
   onSelectConversation,
   onPrefetchConversation,
   onRenameConversation,
+  onPinConversation,
+  onArchiveConversation,
   onDeleteConversation,
   activeConversationId,
 }: AppSidebarProps) {
@@ -152,12 +165,19 @@ export function AppSidebar({
                   key={conversation.id}
                   id={conversation.id}
                   title={conversation.title}
+                  pinned={conversation.pinnedAt !== null}
                   active={activeConversationId === conversation.id}
                   collapsed={collapsed}
                   onSelect={onSelectConversation}
                   onPrefetch={onPrefetchConversation}
                   onRename={(title) =>
                     onRenameConversation(conversation.id, title)
+                  }
+                  onPin={(pinned) =>
+                    onPinConversation(conversation.id, pinned)
+                  }
+                  onArchive={() =>
+                    onArchiveConversation(conversation.id)
                   }
                   onDelete={() => onDeleteConversation(conversation.id)}
                 />
@@ -208,7 +228,6 @@ export function AppSidebar({
               collapsed && "rotate-180",
             )}
           />
-          <span className={cn("truncate", collapsed && "lg:hidden")}>Collapse</span>
         </button>
       </div>
     </div>

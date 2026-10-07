@@ -7,16 +7,20 @@ type ConversationRow = {
   id: string;
   title: string;
   updated_at: string;
+  pinned_at: string | null;
 };
 
 type ConversationSummary = {
   id: string;
   title: string;
   updatedAt: string;
+  pinnedAt: string | null;
 };
 
 /**
- * Lists the signed-in user's conversations, newest first.
+ * Lists the signed-in user's conversations for the
+ * sidebar: archived conversations are hidden, and
+ * pinned ones lead the list.
  *
  * Failures are reported as error responses, never as an empty list:
  * the sidebar renders `[]` as "No conversations yet", so swallowing a
@@ -36,10 +40,15 @@ export async function GET() {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
+  // Archived conversations leave the list; pinned ones
+  // lead it, newest pin first, and both groups fall
+  // back to recency.
   const { data, error } = await client
     .from("conversations")
-    .select("id, title, updated_at")
+    .select("id, title, updated_at, pinned_at")
     .eq("user_id", userId)
+    .is("archived_at", null)
+    .order("pinned_at", { ascending: false, nullsFirst: false })
     .order("updated_at", { ascending: false });
 
   if (error !== null) {
@@ -52,6 +61,7 @@ export async function GET() {
     id: row.id,
     title: row.title,
     updatedAt: row.updated_at,
+    pinnedAt: row.pinned_at,
   }));
 
   return NextResponse.json({ conversations });

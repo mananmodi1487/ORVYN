@@ -78,6 +78,35 @@ describe("GET /api/conversations reports failures honestly", () => {
   });
 });
 
+describe("GET /api/conversations filters and orders the sidebar list", () => {
+  const handler = listRoute.slice(listRoute.indexOf("export async function GET"));
+
+  it("hides archived conversations", () => {
+    // Archiving removes a conversation from the
+    // normal list: the query filters it out rather
+    // than trusting the client to ignore it.
+    assert.match(handler, /\.is\("archived_at", null\)/);
+  });
+
+  it("orders pinned conversations first, then by recency", () => {
+    assert.match(
+      handler,
+      /\.order\("pinned_at", \{ ascending: false, nullsFirst: false \}\)/,
+      "pinned conversations must lead, newest pin first",
+    );
+    assert.match(
+      handler,
+      /\.order\("updated_at", \{ ascending: false \}\)/,
+      "both groups must fall back to recency",
+    );
+  });
+
+  it("reports the pinned state the sidebar sorts by", () => {
+    assert.match(handler, /pinnedAt: row\.pinned_at/);
+    assert.match(handler, /select\("id, title, updated_at, pinned_at"\)/);
+  });
+});
+
 describe("GET /api/conversations/[id]/messages reports failures honestly", () => {
   it("identifies the caller from locally verified claims, not the response wrapper", () => {
     // `getClaims()` verifies the session JWT's signature against the

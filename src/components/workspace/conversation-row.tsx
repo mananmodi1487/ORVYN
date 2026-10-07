@@ -12,20 +12,26 @@ import {
   MAX_CONVERSATION_TITLE_LENGTH,
 } from "@/config/workspace";
 import { cn } from "@/lib/utils";
-import { MoreIcon } from "./icons";
+import { MoreIcon, PinIcon } from "./icons";
 
 const MENU_ITEM_SELECTOR = '[role="menuitem"]';
 
 export type ConversationRowProps = {
   readonly id: string;
   readonly title: string;
+  /** Whether the conversation leads the sidebar. */
+  readonly pinned: boolean;
   readonly active: boolean;
   readonly collapsed: boolean;
   readonly onSelect: (id: string) => void;
-  /** Warms the conversation cache without navigating. */
+  /** Warms the conversation cache without opening it. */
   readonly onPrefetch?: ((id: string) => void) | undefined;
   /** Saves a new title; resolves with an error message, or `null` on success. */
   readonly onRename: (title: string) => Promise<string | null>;
+  /** Pins or unpins; resolves with an error message, or `null` on success. */
+  readonly onPin: (pinned: boolean) => Promise<string | null>;
+  /** Archives the conversation; resolves with an error message, or `null` on success. */
+  readonly onArchive: () => Promise<string | null>;
   /** Deletes the conversation; resolves with an error message, or `null` on success. */
   readonly onDelete: () => Promise<string | null>;
 };
@@ -34,22 +40,28 @@ export type ConversationRowProps = {
  * One conversation in the sidebar, with its context menu.
  *
  * The row is the conversation's select button plus a
- * trigger for a small menu — Rename and Delete. Rename
- * edits the title in place: Enter saves, Escape cancels,
- * and clicking away cancels too. Delete asks for
- * confirmation before the destructive call. Both actions
- * report failures inline, and nothing here reloads the
- * page: the sidebar state this row lives in is updated
- * by the caller on success, which unmounts the row.
+ * trigger for a small menu — Rename, Pin or Unpin,
+ * Archive, and Delete. Rename edits the title in
+ * place: Enter saves, Escape cancels, and clicking
+ * away cancels too. Pin and archive apply as soon as
+ * they are chosen: the sidebar reorders (or drops the
+ * row) the moment the request succeeds, and a failure
+ * is reported inline. Delete asks for confirmation
+ * before the destructive call. Nothing here reloads
+ * the page: the sidebar state this row lives in is
+ * updated by the caller on success.
  */
 export function ConversationRow({
   id,
   title,
+  pinned,
   active,
   collapsed,
   onSelect,
   onPrefetch,
   onRename,
+  onPin,
+  onArchive,
   onDelete,
 }: ConversationRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -198,6 +210,38 @@ export function ConversationRow({
     }
   };
 
+  const togglePin = async () => {
+    if (pending) return;
+    setPending(true);
+    const failure = await onPin(!pinned);
+    setPending(false);
+    if (failure === null) {
+      // The caller reorders the list on success, which
+      // re-renders this row with the new pin state.
+      setMenuOpen(false);
+      setError(null);
+      triggerRef.current?.focus();
+    } else {
+      // Stay in place: the user can try again.
+      setError(failure);
+    }
+  };
+
+  const archive = async () => {
+    if (pending) return;
+    setPending(true);
+    const failure = await onArchive();
+    setPending(false);
+    if (failure === null) {
+      // The caller removes the conversation from the
+      // list, which unmounts this row.
+      setMenuOpen(false);
+      setError(null);
+    } else {
+      setError(failure);
+    }
+  };
+
   return (
     <div ref={rootRef} className="group">
       {renaming ? (
@@ -228,6 +272,14 @@ export function ConversationRow({
             collapsed && "lg:justify-center",
           )}
         >
+          {pinned ? (
+            <span
+              title={conversationMenuCopy.pinnedLabel}
+              className={cn("shrink-0", collapsed && "lg:hidden")}
+            >
+              <PinIcon className="size-3.5 text-ink-subtle" />
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={() => onSelect(id)}
@@ -306,36 +358,61 @@ export function ConversationRow({
             </div>
           )
           : (
-            <div
-              role="menu"
-              aria-label={conversationMenuCopy.triggerLabel}
-              onKeyDown={onPanelKeyDown}
-              className="mt-0.5 flex flex-col rounded-lg border border-line bg-surface-raised p-1 shadow-xl shadow-black/60"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                tabIndex={-1}
-                onClick={openRename}
-                className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-hover"
+            <>
+              <div
+                role="menu"
+                aria-label={conversationMenuCopy.triggerLabel}
+                onKeyDown={onPanelKeyDown}
+                className="mt-0.5 flex flex-col rounded-lg border border-line bg-surface-raised p-1 shadow-xl shadow-black/60"
               >
-                {conversationMenuCopy.rename}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                tabIndex={-1}
-                onClick={() => {
-                  setConfirmingDelete(true);
-                  setError(null);
-                }}
-                className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-hover"
-              >
-                {conversationMenuCopy.delete}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={openRename}
+                  className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-hover"
+                >
+                  {conversationMenuCopy.rename}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={() => void togglePin()}
+                  className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-hover"
+                >
+                  {pinned ? conversationMenuCopy.unpin : conversationMenuCopy.pin}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={() => void archive()}
+                  className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-hover"
+                >
+                  {conversationMenuCopy.archive}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setConfirmingDelete(true);
+                    setError(null);
+                  }}
+                  className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-[13px] text-ink transition-colors duration-150 hover:bg-hover"
+                >
+                  {conversationMenuCopy.delete}
+                </button>
+              </div>
+              {error !== null ? (
+                <p role="alert" className="mt-1 px-2 text-[11px] text-danger">
+                  {error}
+                </p>
+              ) : null}
+            </>
           )
         : null}
-    </div>
-  );
-}
+      </div>
+    );
+  }

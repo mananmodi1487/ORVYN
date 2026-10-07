@@ -23,6 +23,29 @@ const DESKTOP_QUERY = "(min-width: 1024px)";
 const SIDEBAR_ID = "orvyn-sidebar";
 const MAIN_ID = "orvyn-main";
 
+/**
+ * The sidebar's ordering: pinned conversations first —
+ * newest pin first — then the rest by recency. The list
+ * endpoint answers in this order; the optimistic pin
+ * update re-applies it locally so a reorder is
+ * immediate, and a rollback restores the previous
+ * order the same way.
+ */
+function sortConversations(
+  items: readonly ConversationItem[],
+): ConversationItem[] {
+  return [...items].sort((a, b) => {
+    if ((a.pinnedAt !== null) !== (b.pinnedAt !== null)) {
+      return a.pinnedAt !== null ? -1 : 1;
+    }
+    if (a.pinnedAt !== null && b.pinnedAt !== null) {
+      const pinnedOrder = b.pinnedAt.localeCompare(a.pinnedAt);
+      if (pinnedOrder !== 0) return pinnedOrder;
+    }
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
+}
+
 export type WorkspaceShellProps = {
   readonly user: AuthenticatedUser;
 };
@@ -35,9 +58,21 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const [codingOpen, setCodingOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "code">("code");
   const [conversations, setConversations] = useState<readonly ConversationItem[]>([]);
+  // A mirror of the list, so the pin and archive
+  // handlers can read the pre-mutation list
+  // synchronously — the state an optimistic update
+  // rolls back to — without depending on state that
+  // may be stale inside a long-lived callback. The
+  // effect keeps it in step with every committed
+  // change.
+  const conversationsRef = useRef<readonly ConversationItem[]>([]);
   // Bumped whenever a conversation is created, so the list
   // effect reloads and the sidebar shows it immediately.
   const [listVersion, setListVersion] = useState(0);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   const handleConversationCreated = useCallback(() => {
     setListVersion((version) => version + 1);
@@ -194,6 +229,87 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   );
 
   /**
+   * Pins or unpins a conversation. The list is
+   * reordered optimistically — the pinned
+   * conversation leads the sidebar the moment the
+   * menu action is chosen — and a failed request
+   * rolls the previous order back. The hook owns
+   * the request; the shell owns the list.
+   */
+  const handlePinConversation = useCallback(
+    async (id: string, pinned: boolean): Promise<string | null> => {
+      const previous = conversationsRef.current.find(
+        (item) => item.id === id,
+      );
+      setConversations((items) =>
+        sortConversations(
+          items.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  pinnedAt: pinned ? new Date().toISOString() : null,
+                }
+              : item,
+          ),
+        ),
+      );
+
+      const result = await conversation.pinConversation(id, pinned);
+      if (result.ok) {
+        return null;
+      }
+
+      // The server refused the change: put the
+      // conversation back the way the list held it.
+      if (previous !== undefined) {
+        setConversations((items) =>
+          sortConversations(
+            items.map((item) =>
+              item.id === id
+                ? { ...item, pinnedAt: previous.pinnedAt }
+                : item,
+            ),
+          ),
+        );
+      }
+      return conversationActionErrorMessage(result.error);
+    },
+    [conversation],
+  );
+
+  /**
+   * Archives a conversation: it leaves the sidebar
+   * immediately and stays hidden — the list endpoint
+   * no longer returns it — unless the request fails,
+   * which puts it back where it was.
+   */
+  const handleArchiveConversation = useCallback(
+    async (id: string): Promise<string | null> => {
+      const items = conversationsRef.current;
+      const index = items.findIndex((item) => item.id === id);
+      const previous = index === -1 ? null : (items[index] ?? null);
+      setConversations(items.filter((item) => item.id !== id));
+
+      const result = await conversation.archiveConversation(id);
+      if (result.ok) {
+        return null;
+      }
+
+      // The server refused the archive: restore the
+      // conversation at its previous position.
+      if (previous !== null) {
+        setConversations((items) => {
+          const restored = [...items];
+          restored.splice(Math.min(index, restored.length), 0, previous);
+          return restored;
+        });
+      }
+      return conversationActionErrorMessage(result.error);
+    },
+    [conversation],
+  );
+
+  /**
    * Deletes a conversation. The hook evicts its
    * cache entry and returns the view to the empty
    * state when the open conversation is the one
@@ -319,6 +435,8 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
           onSelectConversation={handleSelectConversation}
           onPrefetchConversation={conversation.prefetchConversation}
           onRenameConversation={handleRenameConversation}
+          onPinConversation={handlePinConversation}
+          onArchiveConversation={handleArchiveConversation}
           onDeleteConversation={handleDeleteConversation}
           activeConversationId={conversation.conversationId}
         />

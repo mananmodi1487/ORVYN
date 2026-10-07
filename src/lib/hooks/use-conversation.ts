@@ -47,6 +47,17 @@ export type UseConversation = {
     id: string,
     title: string,
   ) => Promise<ConversationActionResult>;
+  /** Pins or unpins a conversation. */
+  pinConversation: (
+    id: string,
+    pinned: boolean,
+  ) => Promise<ConversationActionResult>;
+  /**
+   * Archives a conversation, hiding it from the
+   * sidebar list. The conversation and its cached
+   * turns are kept — archiving is not deletion.
+   */
+  archiveConversation: (id: string) => Promise<ConversationActionResult>;
   /**
    * Deletes a conversation, evicts its cache entry,
    * and returns the view to the empty state when
@@ -360,6 +371,47 @@ export function useConversation(
     [],
   );
 
+  const pinConversation = useCallback(
+    async (
+      id: string,
+      pinned: boolean,
+    ): Promise<ConversationActionResult> => {
+      const response = await fetch(`/api/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      });
+
+      if (response.ok) return { ok: true };
+      return { ok: false, error: await actionFailure(response, "failed_to_pin") };
+    },
+    [],
+  );
+
+  const archiveConversation = useCallback(
+    async (id: string): Promise<ConversationActionResult> => {
+      const response = await fetch(`/api/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: true }),
+      });
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          error: await actionFailure(response, "failed_to_archive"),
+        };
+      }
+
+      // Archiving hides the conversation from the list
+      // but keeps it — and its cached turns — intact,
+      // so nothing is evicted and the open view is
+      // left alone.
+      return { ok: true };
+    },
+    [],
+  );
+
   const deleteConversation = useCallback(
     async (id: string): Promise<ConversationActionResult> => {
       const response = await fetch(`/api/conversations/${id}`, {
@@ -407,6 +459,8 @@ export function useConversation(
     createConversation,
     prefetchConversation,
     renameConversation,
+    pinConversation,
+    archiveConversation,
     deleteConversation,
   };
 }

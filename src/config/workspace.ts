@@ -114,8 +114,12 @@ export const MAX_CONVERSATION_TITLE_LENGTH = 120;
 export const conversationMenuCopy = {
   triggerLabel: "Conversation actions",
   rename: "Rename",
+  pin: "Pin",
+  unpin: "Unpin",
+  archive: "Archive",
   delete: "Delete",
   renamePlaceholder: "Rename conversation",
+  pinnedLabel: "Pinned",
   confirmDeleteTitle: "Delete this conversation?",
   confirmDeleteDescription:
     "Its messages are deleted with it. This cannot be undone.",
@@ -125,6 +129,8 @@ export const conversationMenuCopy = {
   unauthenticated: "Sign in to manage conversations.",
   notFound: "The conversation no longer exists.",
   renameFailed: "Could not rename the conversation.",
+  pinFailed: "Could not update the conversation's pin.",
+  archiveFailed: "Could not archive the conversation.",
   deleteFailed: "Could not delete the conversation.",
   unexpected: "Something went wrong. Try again.",
 } as const;
@@ -147,6 +153,10 @@ export function conversationActionErrorMessage(code: string): string {
     case "failed_to_update":
     case "failed_to_rename":
       return conversationMenuCopy.renameFailed;
+    case "failed_to_pin":
+      return conversationMenuCopy.pinFailed;
+    case "failed_to_archive":
+      return conversationMenuCopy.archiveFailed;
     case "failed_to_delete":
       return conversationMenuCopy.deleteFailed;
     default:

@@ -77,16 +77,19 @@ export async function GET(
 
 /**
  * PATCH /api/conversations/[id]
- * Renames a conversation.
+ * Renames, pins, or archives a conversation.
  *
- * The title is the user's own text, so it is trimmed and
- * bounded before it touches the database: an empty or
- * oversized title answers 400 rather than storing a blank
- * sidebar entry. The write is scoped to the signed-in user
- * here and by the RLS policy, so another user's conversation
- * id matches no row and answers 404 — the same not-found
- * the GET path answers, which keeps ownership from being
- * distinguishable from a missing id.
+ * The request carries exactly one mutation: a `title`
+ * rename, a `pinned` flag, or an `archived` flag — a body
+ * with none or several of them is a client mistake and
+ * answers 400. The title is the user's own text, so it is
+ * trimmed and bounded before it touches the database: an
+ * empty or oversized title answers 400 rather than storing
+ * a blank sidebar entry. The write is scoped to the
+ * signed-in user here and by the RLS policy, so another
+ * user's conversation id matches no row and answers 404 —
+ * the same not-found the GET path answers, which keeps
+ * ownership from being distinguishable from a missing id.
  */
 export async function PATCH(
   request: NextRequest,
@@ -100,44 +103,109 @@ export async function PATCH(
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
-  let body: { title?: unknown };
+  let body: { title?: unknown; pinned?: unknown; archived?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  const { title } = body;
-  if (typeof title !== "string") {
-    return NextResponse.json({ error: "invalid_title" }, { status: 400 });
-  }
+  const { title, pinned, archived } = body;
 
-  const trimmed = title.trim();
-  if (trimmed === "" || trimmed.length > MAX_CONVERSATION_TITLE_LENGTH) {
-    return NextResponse.json({ error: "invalid_title" }, { status: 400 });
+  // Exactly one mutation per request: a rename, a pin
+  // change, or an archive change. A body that carries
+  // none of them — or several at once — is invalid.
+  const mutations = [title, pinned, archived].filter(
+    (value) => value !== undefined,
+  ).length;
+  if (mutations !== 1) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
   const { id } = await params;
 
-  const { data, error } = await client
-    .from("conversations")
-    .update({ title: trimmed })
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select("id, title, updated_at")
-    .single();
+  if (title !== undefined) {
+    if (typeof title !== "string") {
+      return NextResponse.json({ error: "invalid_title" }, { status: 400 });
+    }
 
-  if (error !== null || data === null) {
-    // A `.single()` miss — another user's id included — is
-    // PGRST116; anything else is a server-side failure.
-    const missing = error === null || error.code === "PGRST116";
-    return NextResponse.json(
-      { error: missing ? "not_found" : "failed_to_update" },
-      { status: missing ? 404 : 500 },
-    );
+    const trimmed = title.trim();
+    if (trimmed === "" || trimmed.length > MAX_CONVERSATION_TITLE_LENGTH) {
+      return NextResponse.json({ error: "invalid_title" }, { status: 400 });
+    }
+
+    const { data, error } = await client
+      .from("conversations")
+      .update({ title: trimmed })
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id, title, updated_at")
+      .single();
+
+    if (error !== null || data === null) {
+      // A `.single()` miss — another user's id included — is
+      // PGRST116; anything else is a server-side failure.
+      const missing = error === null || error.code === "PGRST116";
+      return NextResponse.json(
+        { error: missing ? "not_found" : "failed_to_update" },
+        { status: missing ? 404 : 500 },
+      );
+    }
+
+    return NextResponse.json({ conversation: data });
   }
 
-  return NextResponse.json({ conversation: data });
+  if (pinned !== undefined) {
+    if (typeof pinned !== "boolean") {
+      return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+    }
+
+    const { data, error } = await client
+      .from("conversations")
+      .update({ pinned_at: pinned ? new Date().toISOString() : null })
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id, pinned_at, updated_at")
+      .single();
+
+    if (error !== null || data === null) {
+      const missing = error === null || error.code === "PGRST116";
+      return NextResponse.json(
+        { error: missing ? "not_found" : "failed_to_pin" },
+        { status: missing ? 404 : 500 },
+      );
+    }
+
+    return NextResponse.json({ conversation: data });
+  }
+
+  if (archived !== undefined) {
+    if (typeof archived !== "boolean") {
+      return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+    }
+
+    const { data, error } = await client
+      .from("conversations")
+      .update({ archived_at: archived ? new Date().toISOString() : null })
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("id, archived_at, updated_at")
+      .single();
+
+    if (error !== null || data === null) {
+      const missing = error === null || error.code === "PGRST116";
+      return NextResponse.json(
+        { error: missing ? "not_found" : "failed_to_archive" },
+        { status: missing ? 404 : 500 },
+      );
+    }
+
+    return NextResponse.json({ conversation: data });
+  }
+
+  // Unreachable: the mutation count above admits exactly
+  // one of the three fields, and each branch returns.
+  return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 }
 
 /**
