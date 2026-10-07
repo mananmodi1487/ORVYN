@@ -9,7 +9,9 @@ export async function serveCommand(): Promise<void> {
 
   let agent: Awaited<ReturnType<typeof createAgentServer>>;
   try {
-    agent = await createAgentServer(config.port);
+    agent = await createAgentServer(config.port, {
+    projectRoot: config.projectRoot,
+  });
   } catch (error) {
     console.error(
       `Failed to start agent: ${error instanceof Error ? error.message : String(error)}`

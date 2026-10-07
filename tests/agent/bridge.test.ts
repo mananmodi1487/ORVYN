@@ -115,9 +115,10 @@ describe("AgentBridge SSE event parsing", () => {
       eventTypes.push((event as { t: string }).t);
     }
 
-    assert.ok(eventTypes.includes("status"));
-    assert.ok(eventTypes.includes("tool"));
-    assert.ok(eventTypes.includes("done"));
+    // "hello" contains no recognised tool instruction, so the planner
+    // reports no_tool_match. The stream must still parse multiple
+    // distinct event types across the lifecycle.
+    assert.deepEqual(eventTypes, ["status", "error", "status", "done"]);
 
     await agent.stop();
   });
