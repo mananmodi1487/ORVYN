@@ -115,3 +115,57 @@ describe("useConversation persists the whole turn", () => {
     assert.match(hook, /persistMessage\(currentConversationId, "assistant", answer\)/);
   });
 });
+
+describe("useConversation makes saving automatic and reliable", () => {
+  it("notifies the caller the moment a conversation row exists", () => {
+    // The sidebar must learn about a new conversation immediately,
+    // not on the next page load.
+    assert.match(hook, /onConversationCreated\?\.\(id\)/);
+  });
+
+  it("keeps the message on screen when the conversation cannot be created", () => {
+    // The composer clears its draft as soon as Enter is pressed, so
+    // the hook itself must keep the turn visible when creation fails.
+    const send = hook.slice(hook.indexOf("const send = useCallback"));
+    const commitAt = send.indexOf("commit([...turnsRef.current, orphan]");
+    const errorAt = send.indexOf("Could not create conversation.");
+    assert.ok(commitAt > -1, "the orphaned turn must be committed");
+    assert.ok(errorAt > -1, "the failure must be reported");
+    assert.ok(
+      commitAt < errorAt,
+      "the turn must be committed before the error is set",
+    );
+  });
+
+  it("queues orphaned turns and flushes them once a conversation exists", () => {
+    const send = hook.slice(hook.indexOf("const send = useCallback"));
+    const flushAt = send.indexOf("for (const pendingText of pending)");
+    assert.ok(flushAt > -1, "queued turns must be flushed after creation");
+    assert.ok(
+      flushAt < send.indexOf("void runRequest({"),
+      "queued turns must be flushed before the stream starts",
+    );
+  });
+
+  it("persists the assistant message even when the stream was interrupted", () => {
+    // A reset or navigation mid-stream clears the controller, which
+    // must not also discard the answer the user already saw.
+    const finallyAt = hook.indexOf(".finally(() => {");
+    const guardAt = hook.indexOf(
+      "if (controllerRef.current === controller) {",
+      finallyAt,
+    );
+    const persistAt = hook.indexOf(
+      'persistMessage(currentConversationId, "assistant", answer)',
+    );
+    assert.ok(guardAt > -1, "the controller guard must exist");
+    assert.ok(
+      persistAt > guardAt,
+      "assistant persistence must not depend on the controller guard",
+    );
+  });
+
+  it("discards queued turns when the conversation is reset or replaced", () => {
+    assert.match(hook, /pendingTurnsRef\.current = \[\];/);
+  });
+});

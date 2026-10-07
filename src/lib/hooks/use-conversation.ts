@@ -31,7 +31,19 @@ export type UseConversation = {
   createConversation: () => Promise<string>;
 };
 
-export function useConversation(): UseConversation {
+export type UseConversationOptions = {
+  /**
+   * Invoked once a conversation row exists in Supabase, so the
+   * caller can show it immediately instead of on the next load.
+   */
+  readonly onConversationCreated?: (id: string) => void;
+};
+
+export function useConversation(
+  options: UseConversationOptions = {},
+): UseConversation {
+  const { onConversationCreated } = options;
+
   const [turns, setTurns] = useState<readonly ConversationTurn[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<ChatStreamError | null>(null);
@@ -40,6 +52,8 @@ export function useConversation(): UseConversation {
 
   const turnsRef = useRef<ConversationTurn[]>([]);
   const controllerRef = useRef<AbortController | null>(null);
+  /** Texts sent before a conversation row could be created. */
+  const pendingTurnsRef = useRef<readonly string[]>([]);
 
   const commit = useCallback((next: ConversationTurn[]) => {
     turnsRef.current = next;
@@ -52,6 +66,7 @@ export function useConversation(): UseConversation {
     setIsStreaming(false);
     controllerRef.current?.abort();
     controllerRef.current = null;
+    pendingTurnsRef.current = [];
 
     try {
       const response = await fetch(`/api/conversations/${id}`);
@@ -87,8 +102,9 @@ export function useConversation(): UseConversation {
     const data = (await response.json()) as { conversation: { id: string } };
     const id = data.conversation.id;
     setConversationId(id);
+    onConversationCreated?.(id);
     return id;
-  }, []);
+  }, [onConversationCreated]);
 
   const persistMessage = useCallback(
     (conversationId: string, role: "user" | "assistant", content: string) => {
@@ -113,6 +129,12 @@ export function useConversation(): UseConversation {
         try {
           currentConversationId = await createConversation();
         } catch {
+          // The conversation row could not be created, but the user's
+          // words must survive: keep the turn on screen and queue its
+          // text so the next successful create persists it too.
+          const orphan: ConversationTurn = { id: newId(), role: "user", text };
+          pendingTurnsRef.current = [...pendingTurnsRef.current, text];
+          commit([...turnsRef.current, orphan]);
           setError({
             code: "PROVIDER_REQUEST_FAILED",
             message: "Could not create conversation.",
@@ -120,6 +142,12 @@ export function useConversation(): UseConversation {
             detail: null,
           });
           return;
+        }
+
+        const pending = pendingTurnsRef.current;
+        pendingTurnsRef.current = [];
+        for (const pendingText of pending) {
+          persistMessage(currentConversationId, "user", pendingText);
         }
       }
 
@@ -178,10 +206,13 @@ export function useConversation(): UseConversation {
           if (controllerRef.current === controller) {
             controllerRef.current = null;
             setIsStreaming(false);
+          }
 
-            if (currentConversationId && answer !== "") {
-              persistMessage(currentConversationId, "assistant", answer);
-            }
+          // Persist even when a reset or navigation cleared the
+          // controller mid-stream: the user saw this answer, so it
+          // belongs in the conversation's record.
+          if (currentConversationId && answer !== "") {
+            persistMessage(currentConversationId, "assistant", answer);
           }
         });
     },
@@ -199,6 +230,7 @@ export function useConversation(): UseConversation {
     setError(null);
     setActiveModel(null);
     setConversationId(null);
+    pendingTurnsRef.current = [];
     commit([]);
   }, [commit]);
 

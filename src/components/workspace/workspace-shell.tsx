@@ -31,8 +31,17 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const [codingOpen, setCodingOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "code">("code");
   const [conversations, setConversations] = useState<readonly ConversationItem[]>([]);
+  // Bumped whenever a conversation is created, so the list
+  // effect reloads and the sidebar shows it immediately.
+  const [listVersion, setListVersion] = useState(0);
 
-  const conversation = useConversation();
+  const handleConversationCreated = useCallback(() => {
+    setListVersion((version) => version + 1);
+  }, []);
+
+  const conversation = useConversation({
+    onConversationCreated: handleConversationCreated,
+  });
   const usage = useAccountUsage(conversation.turns.length);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
@@ -67,6 +76,9 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
     if (drawerActive) sidebarRef.current?.focus();
   }, [drawerActive]);
 
+  // Loads the sidebar list on mount and again whenever a
+  // conversation is created, so a new chat shows up in the
+  // sidebar immediately instead of on the next page load.
   useEffect(() => {
     let cancelled = false;
 
@@ -83,12 +95,12 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
       }
     }
 
-    loadConversations();
+    void loadConversations();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [listVersion]);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -102,12 +114,9 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
     composerRef.current?.focus();
 
     try {
+      // createConversation notifies onConversationCreated, which
+      // refreshes the sidebar list.
       await conversation.createConversation();
-      const response = await fetch("/api/conversations");
-      if (response.ok) {
-        const data = (await response.json()) as { conversations: ConversationItem[] };
-        setConversations(data.conversations ?? []);
-      }
     } catch {
       // Non-blocking: the user can still type and send.
     }
