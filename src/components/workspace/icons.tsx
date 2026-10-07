@@ -138,16 +138,6 @@ export function ArrowUpIcon(props: IconProps) {
   );
 }
 
-export function UsersIcon(props: IconProps) {
-  return (
-    <Stroke {...props}>
-      <circle cx="9.5" cy="8.5" r="2.75" />
-      <path d="M3.5 19.5a6 6 0 0 1 12 0" />
-      <path d="M16 6.2a2.75 2.75 0 0 1 0 5.2M17.5 14.4a6 6 0 0 1 3 5.1" />
-    </Stroke>
-  );
-}
-
 export function CheckIcon(props: IconProps) {
   return (
     <Stroke {...props}>

@@ -2,8 +2,8 @@
 
 import type { RefObject } from "react";
 import { Badge, Button } from "@/components/ui";
-import { getResponseMode, missionView, type ResponseMode } from "@/config/workspace";
-import { MenuIcon, UsersIcon } from "./icons";
+import { getResponseMode, type ResponseMode } from "@/config/workspace";
+import { MenuIcon } from "./icons";
 import { ModeSegmented } from "./mode-segmented";
 
 export type TopBarProps = {
@@ -36,17 +36,6 @@ export function TopBar({ mode, onModeChange, onOpenDrawer, triggerRef }: TopBarP
         <Badge variant="outline" className="sm:hidden">
           {getResponseMode(mode).label}
         </Badge>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          title={missionView.description}
-          className="text-ink-muted"
-        >
-          <UsersIcon className="size-3.5" />
-          <span className="hidden sm:inline">{missionView.label}</span>
-          <span className="sr-only sm:hidden">{missionView.label}</span>
-        </Button>
       </div>
     </header>
   );

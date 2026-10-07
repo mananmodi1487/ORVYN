@@ -86,12 +86,6 @@ export const signedOutState = {
   description: "Sign in to start a conversation.",
 } as const;
 
-export const missionView = {
-  label: "Mission View",
-  familyLabel: "Family",
-  description: "Switch between personal and shared workspaces.",
-} as const;
-
 export const conversationEmptyState = {
   title: "No conversations yet",
   description: "Start one and it will appear here.",

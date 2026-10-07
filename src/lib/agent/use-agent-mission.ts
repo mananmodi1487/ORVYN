@@ -16,12 +16,18 @@ export function useAgentMission(agent: AgentBridge): UseAgentMissionResult {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const missionRef = useRef<MissionHandle | null>(null);
+  // Set when a cancellation is requested. Cancelling aborts
+  // the stream, which closes without a terminal event, so
+  // the end of the stream is what returns the mission to
+  // idle — through the visible "cancelling" state.
+  const cancellingRef = useRef(false);
 
   const start = useCallback(
     async (prompt: string) => {
       setError(null);
       setEvents([]);
       setStatus("starting");
+      cancellingRef.current = false;
 
       try {
         const handle = await agent.startMission({ prompt });
@@ -42,23 +48,41 @@ export function useAgentMission(agent: AgentBridge): UseAgentMissionResult {
             break;
           }
         }
+
+        // A cancelled stream ends without done or error;
+        // the mission is over, so return to idle.
+        if (cancellingRef.current) {
+          cancellingRef.current = false;
+          setStatus("idle");
+        }
       } catch (err) {
-        setStatus("error");
-        setError(err instanceof Error ? err.message : "unknown_error");
+        // The abort surfaces as an error on some transports;
+        // a cancellation is not a mission failure.
+        if (cancellingRef.current) {
+          cancellingRef.current = false;
+          setStatus("idle");
+        } else {
+          setStatus("error");
+          setError(err instanceof Error ? err.message : "unknown_error");
+        }
+      } finally {
+        missionRef.current = null;
       }
     },
     [agent],
   );
 
   const cancel = useCallback(() => {
-    if (missionRef.current) {
-      missionRef.current.cancel();
-      setStatus("idle");
-    }
+    if (!missionRef.current) return;
+
+    cancellingRef.current = true;
+    setStatus("cancelling");
+    missionRef.current.cancel();
   }, []);
 
   const reset = useCallback(() => {
     missionRef.current = null;
+    cancellingRef.current = false;
     setStatus("idle");
     setEvents([]);
     setError(null);

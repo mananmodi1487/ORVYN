@@ -19,20 +19,22 @@ export function InstallPrompt() {
       </div>
 
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium text-ink">Install ORVYN Agent</h2>
+        <h2 className="text-lg font-medium text-ink">Run the ORVYN agent</h2>
         <p className="max-w-sm text-sm text-ink-subtle">
-          Run the ORVYN agent on your machine to unlock coding assistance.
-          The agent runs locally and never sends your code to a remote server
-          without your permission.
+          The coding agent runs on your machine as part of the ORVYN
+          repository. It runs locally and never sends your code to a
+          remote server without your permission.
         </p>
       </div>
 
       <div className="rounded-md border border-line bg-surface-inset px-4 py-3">
-        <code className="text-xs text-ink-muted">npx @orvyn/agent-cli serve</code>
+        <code className="text-xs text-ink-muted">
+          npx tsx packages/agent-cli/bin/orvyn-agent.ts serve
+        </code>
       </div>
 
       <p className="text-xs text-ink-subtle">
-        Requires Node.js 20.9 or later.
+        Run from the ORVYN repository root. Requires Node.js 20.9 or later.
       </p>
     </div>
   );
