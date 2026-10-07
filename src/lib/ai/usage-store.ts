@@ -125,20 +125,25 @@ export async function recordUsage(record: UsageRecord): Promise<boolean> {
     return false;
   }
 
-  const { data, error } = await client.auth.getUser();
-  if (error !== null || data.user === null) {
+  // The user id comes from the session JWT's claims, which the client
+  // verifies against the project's cached JWKS — the same identity
+  // getUser() establishes, without a GoTrue round trip on every
+  // completed response.
+  const { data: claimsData, error: claimsError } = await client.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
+  if (claimsError !== null || userId === null) {
     logUsageFailure(
       "no_session",
       record.provider,
       record.modelId,
-      error === null ? "no authenticated session" : error.message,
+      claimsError === null ? "no authenticated session" : claimsError.message,
     );
     return false;
   }
 
   const nonce = newUsageNonce();
   const payload = usageSigningPayload({
-    userId: data.user.id,
+    userId,
     provider: record.provider,
     modelId: record.modelId,
     inputTokens: record.inputTokens,

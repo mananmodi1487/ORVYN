@@ -18,6 +18,7 @@ import {
   type RejectionReason,
 } from "./eligibility";
 import { modelUnavailable, noEligibleModel, providerUnavailable } from "./errors";
+import type { DeclarationSet } from "./declarations";
 import type { ProviderRegistry } from "./registry";
 import { rankCandidates } from "./router";
 import type {
@@ -35,6 +36,34 @@ import type {
 export interface GatewayOptions {
   readonly registry: ProviderRegistry;
   readonly policy?: EligibilityPolicy | undefined;
+  /**
+   * Operator-validated model declarations. When present they are the
+   * catalog: the routing path never asks a provider for its model
+   * list, because a `/models` response carries no capabilities, price,
+   * or context limits — only declarations do. When absent, the gateway
+   * falls back to asking each configured provider, which is the path
+   * tests and ad-hoc composition use.
+   */
+  readonly declarations?: DeclarationSet | undefined;
+  /**
+   * How long one health observation stays trusted before the next
+   * request re-probes. Health is a provider-level signal that changes
+   * on the scale of seconds, not milliseconds; probing it on every
+   * chat request put N upstream round trips on the critical path
+   * before the first token. Defaults to 20 seconds.
+   */
+  readonly healthTtlMs?: number | undefined;
+  /** Clock, injectable so tests can advance past the TTL. */
+  readonly now?: (() => number) | undefined;
+}
+
+/** Default trust window for one health observation. */
+export const DEFAULT_HEALTH_TTL_MS = 20_000;
+
+/** One health observation and the moment it was taken. */
+interface HealthSnapshot {
+  readonly observedAt: number;
+  readonly health: ReadonlyMap<ProviderId, ProviderHealth>;
 }
 
 export interface CatalogEntry {
@@ -60,10 +89,18 @@ export interface SelectionResult {
 export class AiGateway {
   readonly #registry: ProviderRegistry;
   readonly #policy: EligibilityPolicy;
+  readonly #declarations: DeclarationSet | undefined;
+  readonly #healthTtlMs: number;
+  readonly #now: () => number;
+  #healthSnapshot: HealthSnapshot | null = null;
+  #healthProbe: Promise<ReadonlyMap<ProviderId, ProviderHealth>> | null = null;
 
   constructor(options: GatewayOptions) {
     this.#registry = options.registry;
     this.#policy = options.policy ?? DEFAULT_ELIGIBILITY_POLICY;
+    this.#declarations = options.declarations;
+    this.#healthTtlMs = options.healthTtlMs ?? DEFAULT_HEALTH_TTL_MS;
+    this.#now = options.now ?? (() => Date.now());
   }
 
   /**
@@ -72,9 +109,46 @@ export class AiGateway {
    * An unconfigured provider is reported down here rather than by asking it, so
    * the "never contact a provider with no credentials" rule holds centrally
    * instead of depending on each implementation to remember it.
+   *
+   * Observations are cached for `healthTtlMs`: health is a coarse, slow-moving
+   * signal, and re-probing it on every chat request cost an upstream round trip
+   * per provider before the first token. Concurrent callers share one in-flight
+   * probe instead of each starting their own.
    */
   async health(): Promise<ReadonlyMap<ProviderId, ProviderHealth>> {
-    const checkedAt = new Date().toISOString();
+    const snapshot = this.#healthSnapshot;
+    if (snapshot !== null && this.#now() - snapshot.observedAt < this.#healthTtlMs) {
+      return snapshot.health;
+    }
+    const inFlight = this.#healthProbe;
+    if (inFlight !== null) return inFlight;
+
+    const probe = this.#probeHealth();
+    this.#healthProbe = probe;
+    try {
+      const health = await probe;
+      this.#healthSnapshot = { observedAt: this.#now(), health };
+      return health;
+    } finally {
+      this.#healthProbe = null;
+    }
+  }
+
+  /**
+   * Explicit operator refresh: probes every provider now, bypassing the
+   * TTL cache. Nothing on the routing path calls this — it is the escape
+   * hatch for an operator who needs fresh health immediately, such as
+   * after a configuration change.
+   */
+  async refreshHealth(): Promise<ReadonlyMap<ProviderId, ProviderHealth>> {
+    const health = await this.#probeHealth();
+    this.#healthSnapshot = { observedAt: this.#now(), health };
+    return health;
+  }
+
+  /** Probes every registered provider. Unconfigured providers report down. */
+  async #probeHealth(): Promise<ReadonlyMap<ProviderId, ProviderHealth>> {
+    const checkedAt = new Date(this.#now()).toISOString();
     const entries = await Promise.all(
       this.#registry.list().map(async (provider) => {
         if (!provider.info.configured) {
@@ -99,6 +173,12 @@ export class AiGateway {
   /**
    * Aggregated view of the catalog: per-provider models plus health, with
    * ineligible models separated out and the reason recorded.
+   *
+   * When declarations were supplied at construction they are the model
+   * source: no provider is asked for its model list on the routing path,
+   * because only declarations carry capabilities, pricing, and context
+   * limits. Without declarations the gateway asks each configured provider,
+   * which is the legacy path ad-hoc composition relies on.
    */
   async catalog(policy: EligibilityPolicy = this.#policy): Promise<Catalog> {
     const health = await this.health();
@@ -112,23 +192,49 @@ export class AiGateway {
       });
     }
 
-    // Only configured providers are asked for models. An unconfigured provider
-    // has no endpoint to ask.
+    const declarations = this.#declarations;
+    let entries: CatalogEntry[];
+    let allModels: readonly ModelDescriptor[];
+    if (declarations !== undefined) {
+      entries = this.#registry.listConfigured().map((provider) => ({
+        provider: provider.info.id,
+        models: declarations.describeForProvider(provider.info.id),
+      }));
+      // Declarations for providers that are not registered or not
+      // configured are included on purpose: partitioning then reports
+      // *why* they cannot serve — `provider-not-registered` or
+      // `provider-not-configured` — which is exactly the diagnosis
+      // an operator needs.
+      allModels = declarations.describeAll();
+    } else {
+      entries = await this.#listModelsFromProviders();
+      allModels = entries.flatMap((entry) => [...entry.models]);
+    }
+
+    const { eligible, rejected } = partitionByEligibility(allModels, states, policy);
+    return { entries, health, states, eligible, excluded: rejected };
+  }
+
+  /**
+   * Explicit operator discovery: asks every configured provider for the
+   * model ids it reports right now. Nothing on the routing path calls
+   * this — declarations are the source of truth for routing — so an
+   * operator uses it to compare what a provider reports against what is
+   * declared, and to notice a model that was added upstream but never
+   * declared (and is therefore not routable).
+   */
+  async discoverModels(): Promise<readonly CatalogEntry[]> {
+    return this.#listModelsFromProviders();
+  }
+
+  /** Asks each configured provider for its model list. */
+  async #listModelsFromProviders(): Promise<CatalogEntry[]> {
     const modelsByProvider = await Promise.all(
       this.#registry
         .listConfigured()
         .map(async (provider) => [provider.info.id, await provider.listModels()] as const),
     );
-
-    const entries: CatalogEntry[] = [];
-    const allModels: ModelDescriptor[] = [];
-    for (const [providerId, models] of modelsByProvider) {
-      entries.push({ provider: providerId, models });
-      allModels.push(...models);
-    }
-
-    const { eligible, rejected } = partitionByEligibility(allModels, states, policy);
-    return { entries, health, states, eligible, excluded: rejected };
+    return modelsByProvider.map(([provider, models]) => ({ provider, models }));
   }
 
   /**

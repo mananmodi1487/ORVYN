@@ -21,8 +21,13 @@ let cached: AiGateway | null = null;
  * The process-wide gateway.
  *
  * Safe to call before any credential is configured: unconfigured providers are
- * created as `configured: false` and are then never contacted, so this returns a
- * usable gateway that reports "no eligible model" rather than throwing.
+ * created as `configured: false` and are then never contacted, so this returns
+ * a usable gateway that reports "no eligible model" rather than throwing.
+ *
+ * The validated declaration set is handed to the gateway as well as to the
+ * providers, which makes declarations the catalog on the routing path: a chat
+ * request never asks a provider for its model list, and health is probed at
+ * most once per TTL window instead of once per request.
  */
 export function getAiGateway(): AiGateway {
   assertServerOnly("@/lib/ai/runtime");
@@ -30,7 +35,10 @@ export function getAiGateway(): AiGateway {
 
   const declarations = loadDeclarationSetOrEmpty();
   const providers = createGatewayProviders({ declarations });
-  cached = createAiGateway({ registry: createProviderRegistry(providers) });
+  cached = createAiGateway({
+    registry: createProviderRegistry(providers),
+    declarations,
+  });
   return cached;
 }
 

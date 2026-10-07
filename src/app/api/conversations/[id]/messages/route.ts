@@ -7,6 +7,10 @@ export const runtime = "nodejs";
 /**
  * GET /api/conversations/[id]/messages
  * Lists messages for a conversation, newest last.
+ *
+ * The caller is identified from the session JWT's claims, which the
+ * server client verifies against the project's cached JWKS — no
+ * GoTrue round trip is spent on identification.
  */
 export async function GET(
   _request: NextRequest,
@@ -14,8 +18,9 @@ export async function GET(
 ) {
   const client = await createClient();
 
-  const { data: auth } = await client.auth.getUser();
-  if (auth.user === null) {
+  const { data: claimsData, error: claimsError } = await client.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
+  if (claimsError !== null || userId === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
@@ -44,8 +49,9 @@ export async function POST(
 ) {
   const client = await createClient();
 
-  const { data: auth } = await client.auth.getUser();
-  if (auth.user === null) {
+  const { data: claimsData, error: claimsError } = await client.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
+  if (claimsError !== null || userId === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 

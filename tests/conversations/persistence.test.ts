@@ -49,11 +49,25 @@ describe("GET /api/conversations reports failures honestly", () => {
 
   it("requires the session before querying", () => {
     const handler = listRoute.slice(listRoute.indexOf("export async function GET"));
-    const gate = handler.indexOf("auth.user === null");
+    const gate = handler.indexOf("client.auth.getClaims()");
     const query = handler.indexOf('.from("conversations")');
     assert.ok(gate > -1, "the session must be checked");
     assert.ok(query > -1, "the list must be queried");
     assert.ok(gate < query, "the session check must precede the query");
+  });
+
+  it("identifies the caller from locally verified claims", () => {
+    // getClaims verifies the session JWT's signature against the
+    // project's JWKS, which is cached once per process. getUser would
+    // spend a GoTrue round trip on every request to establish the
+    // same identity.
+    const handler = listRoute.slice(listRoute.indexOf("export async function GET"));
+    assert.match(handler, /getClaims\(\)/);
+    assert.match(handler, /claimsData\?\.claims\?\.sub \?\? null/);
+    assert.ok(
+      !handler.includes("getUser()"),
+      "the list handler must not call GoTrue to identify the caller",
+    );
   });
 
   it("returns the camelCase shape the sidebar expects", () => {
@@ -65,13 +79,18 @@ describe("GET /api/conversations reports failures honestly", () => {
 });
 
 describe("GET /api/conversations/[id]/messages reports failures honestly", () => {
-  it("checks the signed-in user, not the response wrapper", () => {
-    // `user === null` tests the getUser() data wrapper, which is never
-    // null — the check must look at the user itself or anonymous requests
-    // fall straight through to the query.
+  it("identifies the caller from locally verified claims, not the response wrapper", () => {
+    // `getClaims()` verifies the session JWT's signature against the
+    // cached JWKS. The old check tested the getUser() data wrapper,
+    // which is never null — and it spent a GoTrue round trip per
+    // request to do it.
     const handler = messagesRoute.slice(messagesRoute.indexOf("export async function GET"));
-    assert.match(handler, /auth\.user === null/);
-    assert.ok(!/\(user === null\)/.test(handler), "the wrapper check must be gone");
+    assert.match(handler, /getClaims\(\)/);
+    assert.match(handler, /claimsData\?\.claims\?\.sub \?\? null/);
+    assert.ok(
+      !/auth\.getUser\(/.test(handler),
+      "the messages handler must not call GoTrue to identify the caller",
+    );
   });
 
   it("answers 500 on database errors instead of an empty list", () => {
@@ -82,20 +101,22 @@ describe("GET /api/conversations/[id]/messages reports failures honestly", () =>
 });
 
 describe("GET /api/conversations/[id] opens a conversation in one round trip", () => {
-  // The DELETE handler below still uses getUser(); the slice keeps
-  // the assertions scoped to the open path.
+  // The slice keeps the GET-specific assertions scoped to the open
+  // path; the DELETE handler follows the same claims check, which
+  // the whole-file assertion below pins.
   const handler = detailRoute.slice(
     detailRoute.indexOf("export async function GET"),
     detailRoute.indexOf("export async function DELETE"),
   );
 
-  it("identifies the caller from locally decoded claims", () => {
-    // getClaims() decodes the session JWT locally with a signing
-    // key fetched once per process; getUser() would validate the
-    // session against GoTrue on every conversation open.
+  it("identifies the caller from locally verified claims", () => {
+    // getClaims() verifies the session JWT's signature against the
+    // project's JWKS, which is fetched once per process and cached.
+    // getUser() would validate the session against GoTrue on every
+    // conversation open.
     assert.match(handler, /getClaims\(\)/);
     assert.ok(
-      !handler.includes("getUser()"),
+      !/auth\.getUser\(/.test(handler),
       "the open path must not call GoTrue",
     );
   });
@@ -124,6 +145,16 @@ describe("GET /api/conversations/[id] opens a conversation in one round trip", (
 
   it("restores the chronological order PostgREST does not promise", () => {
     assert.match(handler, /localeCompare\(b\.created_at\)/);
+  });
+
+  it("never identifies a caller through GoTrue anywhere in the file", () => {
+    // GET and DELETE both establish identity from verified
+    // claims, so no handler in the detail route may call
+    // getUser() at all.
+    assert.ok(
+      !/auth\.getUser\(/.test(detailRoute),
+      "the detail route must not call GoTrue",
+    );
   });
 });
 

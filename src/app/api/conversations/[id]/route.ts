@@ -82,8 +82,9 @@ export async function DELETE(
 ) {
   const client = await createClient();
 
-  const { data: auth } = await client.auth.getUser();
-  if (auth.user === null) {
+  const { data: claimsData, error: claimsError } = await client.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
+  if (claimsError !== null || userId === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
@@ -93,7 +94,7 @@ export async function DELETE(
     .from("conversations")
     .delete()
     .eq("id", id)
-    .eq("user_id", auth.user.id);
+    .eq("user_id", userId);
 
   if (error !== null) {
     return NextResponse.json({ error: "failed_to_delete" }, { status: 500 });

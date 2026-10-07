@@ -1,5 +1,9 @@
-import { indexDeclarations, type ModelDeclaration } from "./providers/model-declaration";
-import type { ModelRef, ProviderId } from "./types";
+import {
+  describeModel,
+  indexDeclarations,
+  type ModelDeclaration,
+} from "./providers/model-declaration";
+import type { ModelDescriptor, ModelRef, ProviderId } from "./types";
 
 /**
  * The validated, immutable set of declarations a deployment runs with.
@@ -42,6 +46,29 @@ export class DeclarationSet {
   /** Declarations for one provider, in model-id order. */
   forProvider(provider: ProviderId): readonly ModelDeclaration[] {
     return this.all().filter((declaration) => declaration.provider === provider);
+  }
+
+  /**
+   * Descriptors for one provider's declarations, in model-id order.
+   *
+   * `describeModel` merges each declaration with the unknown
+   * defaults, so a field the operator did not state stays
+   * unknown — and an unknown field fails closed in eligibility
+   * rather than being guessed. This is the routing-path shape:
+   * a gateway built with these declarations never asks a
+   * provider for its model list.
+   */
+  describeForProvider(provider: ProviderId): readonly ModelDescriptor[] {
+    return this.forProvider(provider).map((declaration) =>
+      describeModel(provider, declaration.modelId, this.#byProvider),
+    );
+  }
+
+  /** Descriptors for every declaration, in `all()` order. */
+  describeAll(): readonly ModelDescriptor[] {
+    return this.all().map((declaration) =>
+      describeModel(declaration.provider, declaration.modelId, this.#byProvider),
+    );
   }
 
   providers(): readonly ProviderId[] {

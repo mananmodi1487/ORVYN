@@ -22,19 +22,24 @@ type ConversationSummary = {
  * the sidebar renders `[]` as "No conversations yet", so swallowing a
  * database error here would hide a broken schema behind a plausible
  * empty state.
+ *
+ * The caller is identified from the session JWT's claims, which the
+ * server client verifies against the project's cached JWKS — no
+ * GoTrue round trip is spent on identification.
  */
 export async function GET() {
   const client = await createClient();
 
-  const { data: auth } = await client.auth.getUser();
-  if (auth.user === null) {
+  const { data: claimsData, error: claimsError } = await client.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
+  if (claimsError !== null || userId === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
   const { data, error } = await client
     .from("conversations")
     .select("id, title, updated_at")
-    .eq("user_id", auth.user.id)
+    .eq("user_id", userId)
     .order("updated_at", { ascending: false });
 
   if (error !== null) {
@@ -58,14 +63,15 @@ export async function GET() {
 export async function POST() {
   const client = await createClient();
 
-  const { data: auth } = await client.auth.getUser();
-  if (auth.user === null) {
+  const { data: claimsData, error: claimsError } = await client.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
+  if (claimsError !== null || userId === null) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
   const { data, error } = await client
     .from("conversations")
-    .insert({ user_id: auth.user.id, title: "" })
+    .insert({ user_id: userId, title: "" })
     .select("id, title, created_at, updated_at")
     .single();
 

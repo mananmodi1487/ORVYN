@@ -347,12 +347,20 @@ describe("the write store refuses to record anything it cannot sign", () => {
 
   it("takes the user id from the session and never from the record", () => {
     // `UsageRecord` carries no identity, so there is nothing for a caller to
-    // supply even accidentally.
+    // supply even accidentally. Identity comes from the session's locally
+    // verified claims: getUser() would spend a GoTrue round trip on every
+    // completed response to establish the same fact.
     const usage = readFileSync(new URL("../../src/lib/ai/usage.ts", import.meta.url), "utf8");
     const start = usage.indexOf("export interface UsageRecord");
     const body = usage.slice(start, usage.indexOf("}", start));
     assert.ok(!/user_id|userId/.test(body), "UsageRecord must not accept an identity");
-    assert.match(store, /usageSigningPayload\(\{\s*userId: data\.user\.id/);
+    assert.match(store, /getClaims\(\)/);
+    assert.match(store, /claimsData\?\.claims\?\.sub \?\? null/);
+    assert.ok(
+      !/auth\.getUser\(/.test(store),
+      "the usage store must not call GoTrue to identify the caller",
+    );
+    assert.match(store, /usageSigningPayload\(\{\s*userId,/);
   });
 
   it("signs over the same values it sends", () => {

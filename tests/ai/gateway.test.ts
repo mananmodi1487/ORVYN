@@ -3,13 +3,20 @@ import { describe, it } from "node:test";
 
 import { DEFAULT_ELIGIBILITY_POLICY } from "@/lib/ai/eligibility";
 import { AiProviderError } from "@/lib/ai/errors";
-import { AiGateway, describeExclusions } from "@/lib/ai/gateway";
+import {
+  AiGateway,
+  DEFAULT_HEALTH_TTL_MS,
+  describeExclusions,
+} from "@/lib/ai/gateway";
+import { DeclarationSet } from "@/lib/ai/declarations";
+import type { ModelDeclaration } from "@/lib/ai/providers/model-declaration";
 import { createProviderRegistry } from "@/lib/ai/registry";
 import type { ChatRequest, GenerationChunk, ModelCapabilities } from "@/lib/ai/types";
 import {
   createFakeProvider,
   healthy,
   makeModel,
+  textChatCapabilities,
   unreachable,
 } from "./fixtures/fake-provider";
 
@@ -281,5 +288,157 @@ describe("gateway health", () => {
     const gateway = new AiGateway({ registry: createProviderRegistry([provider]) });
     const health = await gateway.health();
     assert.equal(health.get("p")?.latencyMs, 42);
+  });
+});
+
+describe("gateway health cache", () => {
+  it("reuses one observation within the TTL and re-probes after it", async () => {
+    let time = 0;
+    const provider = createFakeProvider({
+      id: "p",
+      models: [makeModel({ provider: "p", modelId: "m1" })],
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry([provider]),
+      now: () => time,
+    });
+
+    await gateway.health();
+    await gateway.health();
+    assert.equal(provider.calls.healthCheck, 1, "a fresh observation must be reused");
+
+    time += DEFAULT_HEALTH_TTL_MS;
+    await gateway.health();
+    assert.equal(provider.calls.healthCheck, 2, "an expired observation must be re-probed");
+  });
+
+  it("shares one in-flight probe between concurrent callers", async () => {
+    const provider = createFakeProvider({
+      id: "p",
+      models: [makeModel({ provider: "p", modelId: "m1" })],
+    });
+    const gateway = new AiGateway({ registry: createProviderRegistry([provider]) });
+
+    const [first, second] = await Promise.all([gateway.health(), gateway.health()]);
+    assert.equal(provider.calls.healthCheck, 1, "concurrent callers must share one probe");
+    assert.equal(first, second, "concurrent callers must receive the same observation");
+  });
+
+  it("refreshHealth bypasses the cache on demand", async () => {
+    let time = 0;
+    const provider = createFakeProvider({
+      id: "p",
+      models: [makeModel({ provider: "p", modelId: "m1" })],
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry([provider]),
+      now: () => time,
+    });
+
+    await gateway.health();
+    time += 1_000;
+    await gateway.refreshHealth();
+    assert.equal(provider.calls.healthCheck, 2, "refresh must probe immediately");
+
+    await gateway.health();
+    assert.equal(
+      provider.calls.healthCheck,
+      2,
+      "the refreshed observation must be trusted until it expires",
+    );
+  });
+});
+
+describe("declaration-sourced catalog", () => {
+  const declaration: ModelDeclaration = {
+    provider: "p",
+    modelId: "declared",
+    enabled: true,
+    availability: "available",
+    capabilities: textChatCapabilities(),
+    pricing: { tier: "free", inputPerMillionTokens: 0, outputPerMillionTokens: 0 },
+  };
+
+  it("serves routing from declarations without asking any provider", async () => {
+    const provider = createFakeProvider({
+      id: "p",
+      models: [makeModel({ provider: "p", modelId: "from-list" })],
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry([provider]),
+      declarations: new DeclarationSet([declaration]),
+    });
+
+    const catalog = await gateway.catalog();
+    assert.deepEqual(
+      catalog.entries.flatMap((entry) => entry.models.map((model) => model.modelId)),
+      ["declared"],
+    );
+    assert.deepEqual(
+      catalog.eligible.map((model) => model.modelId),
+      ["declared"],
+    );
+    assert.equal(provider.calls.listModels, 0, "declarations must be the model source");
+    assert.equal(provider.calls.healthCheck, 1, "health is still probed once");
+  });
+
+  it("reports why a declaration for an unregistered provider cannot serve", async () => {
+    const gateway = new AiGateway({
+      registry: createProviderRegistry([createFakeProvider({ id: "p", models: [] })]),
+      declarations: new DeclarationSet([{ ...declaration, provider: "ghost" }]),
+    });
+
+    const catalog = await gateway.catalog();
+    assert.deepEqual(
+      catalog.excluded.map((entry) => entry.reason),
+      ["provider-not-registered"],
+    );
+  });
+
+  it("keeps provider discovery as an explicit operator path", async () => {
+    const provider = createFakeProvider({
+      id: "p",
+      models: [makeModel({ provider: "p", modelId: "reported" })],
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry([provider]),
+      declarations: new DeclarationSet([declaration]),
+    });
+
+    await gateway.catalog();
+    await gateway.select(request);
+    assert.equal(
+      provider.calls.listModels,
+      0,
+      "neither catalog nor selection may ask a provider for its list",
+    );
+
+    const discovered = await gateway.discoverModels();
+    assert.deepEqual(
+      discovered.flatMap((entry) => entry.models.map((model) => model.modelId)),
+      ["reported"],
+    );
+    assert.equal(provider.calls.listModels, 1, "discovery is the one path that asks");
+  });
+
+  it("reuses one health observation across routing calls within the TTL", async () => {
+    const time = 0;
+    const provider = createFakeProvider({
+      id: "p",
+      models: [makeModel({ provider: "p", modelId: "m1" })],
+    });
+    const gateway = new AiGateway({
+      registry: createProviderRegistry([provider]),
+      now: () => time,
+    });
+
+    await gateway.catalog();
+    await gateway.catalog();
+    await gateway.select(request);
+    assert.equal(
+      provider.calls.healthCheck,
+      1,
+      "one observation must serve the whole TTL window",
+    );
   });
 });
