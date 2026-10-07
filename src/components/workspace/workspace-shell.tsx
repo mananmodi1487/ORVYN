@@ -39,8 +39,55 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
     setListVersion((version) => version + 1);
   }, []);
 
+  // Reads the sidebar list. `null` means the list could
+  // not be read; callers decide what that means for them.
+  const loadConversations = useCallback(async () => {
+    try {
+      const response = await fetch("/api/conversations");
+      if (!response.ok) return null;
+      const data = (await response.json()) as { conversations: ConversationItem[] };
+      return data.conversations ?? [];
+    } catch {
+      // Non-blocking: the empty state is a fine fallback.
+      return null;
+    }
+  }, []);
+
+  const handleStreamComplete = useCallback(
+    (id: string) => {
+      // A completed response may have produced an automatic
+      // title for the conversation that just streamed in: the
+      // title is generated while the answer streams, and the
+      // sidebar list is the one place titles show. Reading the
+      // list here is what makes the title appear without
+      // Realtime.
+      //
+      // The title call runs concurrently with the answer, so a
+      // short answer can finish first. The list is re-checked a
+      // couple of times before giving up — the next open reloads
+      // it anyway.
+      const refresh = (attemptsLeft: number) => {
+        void loadConversations().then((items) => {
+          if (items === null) return;
+          const active = items.find((item) => item.id === id);
+          if (active === undefined) return;
+          if (active.title === "") {
+            if (attemptsLeft > 0) {
+              window.setTimeout(() => refresh(attemptsLeft - 1), 1500);
+            }
+            return;
+          }
+          setConversations(items);
+        });
+      };
+      refresh(2);
+    },
+    [loadConversations],
+  );
+
   const conversation = useConversation({
     onConversationCreated: handleConversationCreated,
+    onStreamComplete: handleStreamComplete,
   });
   // Usage figures change only when a reply with reported
   // usage completes. Historical turns loaded from a
@@ -90,25 +137,16 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadConversations() {
-      try {
-        const response = await fetch("/api/conversations");
-        if (!response.ok) return;
-        const data = (await response.json()) as { conversations: ConversationItem[] };
-        if (!cancelled) {
-          setConversations(data.conversations ?? []);
-        }
-      } catch {
-        // Non-blocking: the empty state is a fine fallback.
+    void loadConversations().then((items) => {
+      if (!cancelled && items !== null) {
+        setConversations(items);
       }
-    }
-
-    void loadConversations();
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [listVersion]);
+  }, [listVersion, loadConversations]);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);

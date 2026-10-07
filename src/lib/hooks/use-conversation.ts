@@ -40,12 +40,20 @@ export type UseConversationOptions = {
    * caller can show it immediately instead of on the next load.
    */
   readonly onConversationCreated?: (id: string) => void;
+  /**
+   * Invoked when a stream finishes — answered, failed or
+   * stopped — for the conversation the exchange belongs to.
+   * The user's message is already persisted at that point, so
+   * a caller can refresh anything derived from the
+   * conversation's record, such as its automatic title.
+   */
+  readonly onStreamComplete?: (conversationId: string) => void;
 };
 
 export function useConversation(
   options: UseConversationOptions = {},
 ): UseConversation {
-  const { onConversationCreated } = options;
+  const { onConversationCreated, onStreamComplete } = options;
 
   const [turns, setTurns] = useState<readonly ConversationTurn[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -268,6 +276,14 @@ export function useConversation(
             setIsStreaming(false);
           }
 
+          // The user's message was persisted before the stream
+          // started, whatever the outcome: the conversation's
+          // record — its automatic title included — may have
+          // changed since the view last looked.
+          if (currentConversationId !== null) {
+            onStreamComplete?.(currentConversationId);
+          }
+
           // Persist even when a reset or navigation cleared the
           // controller mid-stream: the user saw this answer, so it
           // belongs in the conversation's record.
@@ -288,7 +304,7 @@ export function useConversation(
           }
         });
     },
-    [commit, conversationId, createConversation, persistMessage],
+    [commit, conversationId, createConversation, onStreamComplete, persistMessage],
   );
 
   const stop = useCallback(() => {
