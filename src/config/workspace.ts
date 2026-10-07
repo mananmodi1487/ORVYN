@@ -116,3 +116,17 @@ export const usageCopy = {
   poolNote: "ORVYN's monthly target. Not guaranteed upstream capacity.",
   unavailablePool: "Free-pool usage unavailable",
 } as const;
+
+/**
+ * Copy actions for responses and code blocks. The clipboard
+ * holds the response's Markdown source — the complete answer
+ * as the assistant wrote it, with no usage figures, provider
+ * names or UI labels mixed in.
+ */
+export const responseCopy = {
+  copyResponse: "Copy response",
+  copied: "Copied",
+  copyCode: "Copy",
+  copiedCode: "Copied",
+  codeFallbackLabel: "code",
+} as const;

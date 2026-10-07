@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usageCopy } from "@/config/workspace";
+import { responseCopy, usageCopy } from "@/config/workspace";
 import type { ChatStreamError, ChatUsage } from "@/lib/ai/chat-protocol";
 import type { ConversationTurn } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { AlertIcon } from "./icons";
+import { CopyButton } from "./copy-button";
+import { MessageMarkdown } from "./message-markdown";
 import { UsageMeta } from "./usage-meta";
 
 export type ConversationTranscriptProps = {
@@ -92,22 +94,26 @@ function Turn({
         </div>
       ) : (
         <>
-          <div className="max-w-[85%] text-[15px] leading-7 whitespace-pre-wrap break-words text-ink">
-            {turn.text}
-            {streaming ? (
-              <span
-                aria-hidden="true"
-                className="ml-0.5 inline-block h-4 w-px translate-y-0.5 bg-ink-subtle"
-              />
-            ) : null}
+          <div className="min-w-0 max-w-[85%] break-words text-[15px] leading-7 text-ink">
+            <MessageMarkdown text={turn.text} streaming={streaming} />
           </div>
-          {/* Provenance and cost sit below the answer, quiet by design: they are
-              reference material, not part of the conversation. The provider and
-              model are internal routing details, so only ORVYN is named here. */}
+          {/* Provenance, the response's own copy action and
+              cost sit below the answer, quiet by design: they
+              are reference material, not part of the
+              conversation. The provider and model are internal
+              routing details, so only ORVYN is named here. The
+              clipboard receives the Markdown source — the
+              complete answer as written, with none of the
+              metadata below it. */}
           {!streaming ? (
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5">
               <p className="text-[11px] text-ink-subtle">ORVYN</p>
               <UsageMeta usage={turn.usage ?? null} />
+              <CopyButton
+                text={turn.text}
+                label={responseCopy.copyResponse}
+                copiedLabel={responseCopy.copied}
+              />
             </div>
           ) : null}
         </>

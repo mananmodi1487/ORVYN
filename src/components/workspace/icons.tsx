@@ -156,6 +156,15 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+export function CopyIcon(props: IconProps) {
+  return (
+    <Stroke {...props}>
+      <rect x="9" y="9" width="11.5" height="11.5" rx="2.5" />
+      <path d="M5.5 15h-1A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5v1" />
+    </Stroke>
+  );
+}
+
 export function LayersIcon(props: IconProps) {
   return (
     <Stroke {...props}>
