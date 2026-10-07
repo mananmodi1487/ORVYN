@@ -55,8 +55,7 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mode, setMode] = useState<ResponseMode>(defaultResponseMode);
   const [draft, setDraft] = useState("");
-  const [codingOpen, setCodingOpen] = useState(false);
-  const [mobileTab, setMobileTab] = useState<"chat" | "code">("code");
+  const [workspace, setWorkspace] = useState<"chat" | "code">("chat");
   const [conversations, setConversations] = useState<readonly ConversationItem[]>([]);
   // A mirror of the list, so the pin and archive
   // handlers can read the pre-mutation list
@@ -346,14 +345,6 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
     composerRef.current?.focus();
   };
 
-  const toggleCoding = useCallback(() => {
-    setCodingOpen((previous) => {
-      const next = !previous;
-      if (next && !isDesktop) setMobileTab("code");
-      return next;
-    });
-  }, [isDesktop]);
-
   const chatScrollArea = (
     <div className="min-h-0 flex-1 overflow-y-auto">
       {conversation.turns.length === 0 ? (
@@ -452,80 +443,69 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
           />
           <button
             type="button"
-            onClick={toggleCoding}
+            onClick={() =>
+              setWorkspace((previous) =>
+                previous === "chat" ? "code" : "chat",
+              )
+            }
+            aria-pressed={workspace === "code"}
             className={cn(
               "h-14 shrink-0 border-l border-line px-3 text-xs font-medium",
-              codingOpen
+              workspace === "code"
                 ? "bg-ink text-canvas"
                 : "text-ink-muted hover:bg-hover hover:text-ink",
             )}
           >
-            {codingOpen ? "Chat" : "Code"}
+            {workspace === "code" ? "Chat" : "Code"}
           </button>
         </div>
 
         <main id={MAIN_ID} className="flex min-h-0 flex-1">
-          <div
-            className={cn(
-              "flex min-w-0 flex-col",
-              isDesktop ? "flex-1" : codingOpen ? "hidden" : "flex-1",
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {!isDesktop && (
+              <div className="flex shrink-0 border-b border-line">
+                <button
+                  type="button"
+                  onClick={() => setWorkspace("chat")}
+                  className={cn(
+                    "flex-1 px-4 py-2 text-xs font-medium",
+                    workspace === "chat"
+                      ? "border-b-2 border-accent text-ink"
+                      : "text-ink-muted",
+                  )}
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspace("code")}
+                  className={cn(
+                    "flex-1 px-4 py-2 text-xs font-medium",
+                    workspace === "code"
+                      ? "border-b-2 border-accent text-ink"
+                      : "text-ink-muted",
+                  )}
+                >
+                  Code
+                </button>
+              </div>
             )}
-          >
-            {chatScrollArea}
-            {messageComposer}
-          </div>
 
-          {codingOpen && (
-            <div
-              className={cn(
-                "flex flex-col",
-                isDesktop ? "w-[420px] shrink-0 border-l" : "flex-1",
-              )}
-            >
-              {!isDesktop && (
-                <div className="flex border-b border-line">
-                  <button
-                    type="button"
-                    onClick={() => setMobileTab("chat")}
-                    className={cn(
-                      "flex-1 px-4 py-2 text-xs font-medium",
-                      mobileTab === "chat"
-                        ? "border-b-2 border-accent text-ink"
-                        : "text-ink-muted",
-                    )}
-                  >
-                    Chat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMobileTab("code")}
-                    className={cn(
-                      "flex-1 px-4 py-2 text-xs font-medium",
-                      mobileTab === "code"
-                        ? "border-b-2 border-accent text-ink"
-                        : "text-ink-muted",
-                    )}
-                  >
-                    Code
-                  </button>
-                </div>
-              )}
-
-              <div className="min-h-0 flex-1">
-                {(mobileTab === "code" || isDesktop) &&
-                agentStatus === "available" ? (
+            {workspace === "chat" ? (
+              <>
+                {chatScrollArea}
+                {messageComposer}
+              </>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col">
+                {agentStatus === "available" ? (
                   <CodingPanel agent={agent} />
-                ) : (mobileTab === "code" || isDesktop) ? (
-                  <InstallPrompt />
                 ) : (
-                  <div className="flex h-full flex-col">
-                    {chatScrollArea}
-                    {messageComposer}
-                  </div>
+                  <InstallPrompt />
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </main>
       </div>
     </div>

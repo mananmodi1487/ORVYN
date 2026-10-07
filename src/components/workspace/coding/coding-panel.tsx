@@ -3,13 +3,33 @@
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useAgentMission } from "@/lib/agent/use-agent-mission";
+import { useMissionHistory } from "@/lib/agent/use-mission-history";
+import { useProjectContext } from "@/lib/hooks/use-project-context";
 import type { AgentBridge } from "@/lib/agent/bridge";
 import type { AgentEvent } from "@/lib/agent/protocol";
 import { MissionStatus } from "./mission-status";
+import { ProjectSelector } from "./project-selector";
 
 export function CodingPanel({ agent }: { readonly agent: AgentBridge }) {
+  const { root, resolved, setRoot } = useProjectContext();
+  const {
+    status,
+    events,
+    error,
+    activeMissionId,
+    start,
+    cancel,
+    reset,
+  } = useAgentMission(agent);
+  const {
+    recordMission,
+    finishMission,
+  } = useMissionHistory();
   const [prompt, setPrompt] = useState("");
-  const { status, events, error, start, cancel, reset } = useAgentMission(agent);
+  // The id of the mission currently being recorded. The hook
+  // clears its own `activeMissionId` in `finally` before this
+  // effect can run, so this ref is what the finish effect reads.
+  const recordedMissionIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -18,10 +38,43 @@ export function CodingPanel({ agent }: { readonly agent: AgentBridge }) {
     }
   }, [status]);
 
+  // Records the mission the moment it starts. A new mission
+  // re-runs this and records its own entry; the history is
+  // local state only, with no UI reading it yet.
+  useEffect(() => {
+    if (activeMissionId === null) return;
+    recordedMissionIdRef.current = activeMissionId;
+    recordMission({
+      id: activeMissionId,
+      prompt,
+      projectRoot: root,
+    });
+    // Intentionally keyed on the active mission id: a new
+    // mission re-runs this and records its own entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMissionId]);
+
+  // Marks the recorded mission finished when the stream ends,
+  // on success, cancellation, or error.
+  useEffect(() => {
+    const id = recordedMissionIdRef.current;
+    if (id === null) return;
+    if (status === "idle" || status === "starting") return;
+
+    const terminalStatus =
+      status === "done"
+        ? "done"
+        : status === "cancelling"
+          ? "cancelled"
+          : "error";
+    finishMission(id, terminalStatus, events.length);
+    recordedMissionIdRef.current = null;
+  }, [status, events.length, finishMission]);
+
   const handleSend = () => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
-    start(trimmed);
+    start(trimmed, root ?? undefined);
     setPrompt("");
   };
 
@@ -37,18 +90,21 @@ export function CodingPanel({ agent }: { readonly agent: AgentBridge }) {
     <div className="flex flex-1 flex-col">
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-ink">ORVYN coding</span>
+          <span className="text-sm font-medium text-ink">ORVYN Code</span>
           <MissionStatus status={status} />
         </div>
-        {isStreaming && (
-          <button
-            type="button"
-            onClick={cancel}
-            className="text-xs text-ink-muted hover:text-ink"
-          >
-            Cancel
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {resolved && <ProjectSelector value={{ root, resolved }} onChange={(next) => setRoot(next.root)} />}
+          {isStreaming && (
+            <button
+              type="button"
+              onClick={cancel}
+              className="text-xs text-ink-muted hover:text-ink"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">

@@ -1,12 +1,18 @@
 import { useState, useCallback, useRef } from "react";
 import type { AgentBridge } from "./bridge";
-import type { AgentEvent, MissionHandle, MissionStatus } from "./protocol";
+import type {
+  AgentEvent,
+  MissionHandle,
+  MissionRequest,
+  MissionStatus,
+} from "./protocol";
 
 export interface UseAgentMissionResult {
   readonly status: MissionStatus;
   readonly events: readonly AgentEvent[];
   readonly error: string | null;
-  readonly start: (prompt: string) => Promise<void>;
+  readonly activeMissionId: string | null;
+  readonly start: (prompt: string, projectRoot?: string) => Promise<void>;
   readonly cancel: () => void;
   readonly reset: () => void;
 }
@@ -15,6 +21,7 @@ export function useAgentMission(agent: AgentBridge): UseAgentMissionResult {
   const [status, setStatus] = useState<MissionStatus>("idle");
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [activeMissionId, setActiveMissionId] = useState<string | null>(null);
   const missionRef = useRef<MissionHandle | null>(null);
   // Set when a cancellation is requested. Cancelling aborts
   // the stream, which closes without a terminal event, so
@@ -23,15 +30,19 @@ export function useAgentMission(agent: AgentBridge): UseAgentMissionResult {
   const cancellingRef = useRef(false);
 
   const start = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, projectRoot?: string) => {
       setError(null);
       setEvents([]);
       setStatus("starting");
       cancellingRef.current = false;
 
       try {
-        const handle = await agent.startMission({ prompt });
+        const request: MissionRequest = projectRoot === undefined
+          ? { prompt }
+          : { prompt, projectRoot };
+        const handle = await agent.startMission(request);
         missionRef.current = handle;
+        setActiveMissionId(handle.id);
         setStatus("running");
 
         for await (const event of agent.streamMission(handle.id)) {
@@ -67,6 +78,7 @@ export function useAgentMission(agent: AgentBridge): UseAgentMissionResult {
         }
       } finally {
         missionRef.current = null;
+        setActiveMissionId(null);
       }
     },
     [agent],
@@ -83,10 +95,11 @@ export function useAgentMission(agent: AgentBridge): UseAgentMissionResult {
   const reset = useCallback(() => {
     missionRef.current = null;
     cancellingRef.current = false;
+    setActiveMissionId(null);
     setStatus("idle");
     setEvents([]);
     setError(null);
   }, []);
 
-  return { status, events, error, start, cancel, reset };
+  return { status, events, error, activeMissionId, start, cancel, reset };
 }

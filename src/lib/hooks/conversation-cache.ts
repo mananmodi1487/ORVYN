@@ -40,6 +40,18 @@ export class ConversationCache {
    */
   getSnapshot = (): number => this.#version;
 
+  /**
+   * The server snapshot for `useSyncExternalStore`.
+   *
+   * React requires one during server rendering: without it the
+   * hook throws "Missing getServerSnapshot". The server build
+   * and a fresh client share the same starting version — the
+   * cache is created empty on each render — so this returns the
+   * same value `getSnapshot` would, and the initial render can
+   * never disagree with the client's first paint.
+   */
+  getServerSnapshot = (): number => this.#version;
+
   /** The cached turns for a conversation, or `undefined` when it has not been loaded yet. */
   getTurns(id: string): readonly ConversationTurn[] | undefined {
     return this.#entries.get(id);

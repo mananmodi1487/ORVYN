@@ -119,6 +119,7 @@ export function useConversation(
   const cacheVersion = useSyncExternalStore(
     conversationCache.subscribe,
     conversationCache.getSnapshot,
+    conversationCache.getServerSnapshot,
   );
 
   // Keeps the view in step with the cache for the open
