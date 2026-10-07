@@ -18,6 +18,16 @@ export interface ConversationTurn extends ChatTurn {
   readonly usage?: ChatUsage | undefined;
 }
 
+/**
+ * The result of a conversation mutation. `error` is
+ * a stable code from the API's error contract, never
+ * message text, so callers branch on the code and
+ * map it to copy rather than parsing prose.
+ */
+export type ConversationActionResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: string };
+
 export type UseConversation = {
   readonly turns: readonly ConversationTurn[];
   readonly isStreaming: boolean;
@@ -32,6 +42,17 @@ export type UseConversation = {
   createConversation: () => Promise<string>;
   /** Warms the cache for a conversation without opening it. */
   prefetchConversation: (id: string) => void;
+  /** Renames a conversation. */
+  renameConversation: (
+    id: string,
+    title: string,
+  ) => Promise<ConversationActionResult>;
+  /**
+   * Deletes a conversation, evicts its cache entry,
+   * and returns the view to the empty state when
+   * the open conversation is the one deleted.
+   */
+  deleteConversation: (id: string) => Promise<ConversationActionResult>;
 };
 
 export type UseConversationOptions = {
@@ -322,6 +343,56 @@ export function useConversation(
     commit([]);
   }, [commit, openConversation]);
 
+  const renameConversation = useCallback(
+    async (
+      id: string,
+      title: string,
+    ): Promise<ConversationActionResult> => {
+      const response = await fetch(`/api/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+
+      if (response.ok) return { ok: true };
+      return { ok: false, error: await actionFailure(response, "failed_to_rename") };
+    },
+    [],
+  );
+
+  const deleteConversation = useCallback(
+    async (id: string): Promise<ConversationActionResult> => {
+      const response = await fetch(`/api/conversations/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          error: await actionFailure(response, "failed_to_delete"),
+        };
+      }
+
+      // A deleted conversation must never render again,
+      // so its cached turns are evicted rather than left
+      // for the next load to revalidate.
+      conversationCache.remove(id);
+
+      // Deleting the open conversation leaves nothing to
+      // show, so the view returns to the empty state.
+      // `reset` also aborts an in-flight stream, whose
+      // completion would otherwise write turns back into
+      // the cache for a conversation that no longer
+      // exists.
+      if (conversationIdRef.current === id) {
+        reset();
+      }
+
+      return { ok: true };
+    },
+    [reset],
+  );
+
   return {
     turns,
     isStreaming,
@@ -335,6 +406,8 @@ export function useConversation(
     loadConversation,
     createConversation,
     prefetchConversation,
+    renameConversation,
+    deleteConversation,
   };
 }
 
@@ -490,6 +563,28 @@ async function readErrorBody(response: Response): Promise<ChatStreamError> {
     retryable: response.status >= 500,
     detail: `HTTP ${response.status}`,
   };
+}
+
+/**
+ * Reads the error code from a failed mutation
+ * response. A response without a readable body
+ * falls back to a status-derived code, so the
+ * caller always receives one of the contract's
+ * codes.
+ */
+async function actionFailure(
+  response: Response,
+  fallback: string,
+): Promise<string> {
+  try {
+    const data = (await response.json()) as { error?: unknown };
+    if (typeof data.error === "string" && data.error.trim() !== "") {
+      return data.error;
+    }
+  } catch {
+    // No JSON body to read; derive the code below.
+  }
+  return response.status >= 500 ? fallback : "invalid_request";
 }
 
 function newId(): string {

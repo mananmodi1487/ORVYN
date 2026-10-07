@@ -1,3 +1,6 @@
+import {
+  MAX_CONVERSATION_TITLE_LENGTH,
+} from "@/config/workspace";
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -70,6 +73,71 @@ export async function GET(
     conversation,
     messages: orderedMessages,
   });
+}
+
+/**
+ * PATCH /api/conversations/[id]
+ * Renames a conversation.
+ *
+ * The title is the user's own text, so it is trimmed and
+ * bounded before it touches the database: an empty or
+ * oversized title answers 400 rather than storing a blank
+ * sidebar entry. The write is scoped to the signed-in user
+ * here and by the RLS policy, so another user's conversation
+ * id matches no row and answers 404 — the same not-found
+ * the GET path answers, which keeps ownership from being
+ * distinguishable from a missing id.
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const client = await createClient();
+
+  const { data: claimsData, error: claimsError } = await client.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
+  if (claimsError !== null || userId === null) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+
+  let body: { title?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+  }
+
+  const { title } = body;
+  if (typeof title !== "string") {
+    return NextResponse.json({ error: "invalid_title" }, { status: 400 });
+  }
+
+  const trimmed = title.trim();
+  if (trimmed === "" || trimmed.length > MAX_CONVERSATION_TITLE_LENGTH) {
+    return NextResponse.json({ error: "invalid_title" }, { status: 400 });
+  }
+
+  const { id } = await params;
+
+  const { data, error } = await client
+    .from("conversations")
+    .update({ title: trimmed })
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("id, title, updated_at")
+    .single();
+
+  if (error !== null || data === null) {
+    // A `.single()` miss — another user's id included — is
+    // PGRST116; anything else is a server-side failure.
+    const missing = error === null || error.code === "PGRST116";
+    return NextResponse.json(
+      { error: missing ? "not_found" : "failed_to_update" },
+      { status: missing ? 404 : 500 },
+    );
+  }
+
+  return NextResponse.json({ conversation: data });
 }
 
 /**

@@ -8,6 +8,7 @@ export {
   type ConversationTurn,
   type UseConversation,
   type UseConversationOptions,
+  type ConversationActionResult,
 } from "./use-conversation";
 export { useIsClient } from "./use-is-client";
 export { useMediaQuery } from "./use-media-query";

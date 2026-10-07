@@ -89,6 +89,26 @@ export class ConversationCache {
     this.#loads.set(id, load);
     return load;
   }
+
+  /**
+   * Evicts a conversation and notifies subscribers.
+   *
+   * Deletion is the cache's only removal: a deleted
+   * conversation must never render again, so its turns
+   * are dropped rather than left for the next load to
+   * revalidate. Evicting an unknown id is a no-op, so a
+   * delete that races a cache miss costs nothing.
+   */
+  remove(id: string): void {
+    const hadEntry = this.#entries.delete(id);
+    const hadLoad = this.#loads.delete(id);
+    if (!hadEntry && !hadLoad) return;
+
+    this.#version += 1;
+    for (const listener of this.#listeners) {
+      listener();
+    }
+  }
 }
 
 /** The process-wide cache: one per tab, like the session it mirrors. */

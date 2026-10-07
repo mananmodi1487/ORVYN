@@ -26,6 +26,7 @@ import {
   type IconProps,
 } from "./icons";
 import { SidebarNavItem } from "./sidebar-nav-item";
+import { ConversationRow } from "./conversation-row";
 import { UsageMeter } from "./usage-meter";
 
 const navIcons: Readonly<Record<SidebarNavId, ComponentType<IconProps>>> = {
@@ -52,6 +53,13 @@ export type AppSidebarProps = {
   onSelectConversation: (id: string) => void;
   /** Warms the conversation cache without navigating. */
   onPrefetchConversation?: (id: string) => void;
+  /** Renames a conversation; resolves with an error message, or `null` on success. */
+  onRenameConversation: (
+    id: string,
+    title: string,
+  ) => Promise<string | null>;
+  /** Deletes a conversation; resolves with an error message, or `null` on success. */
+  onDeleteConversation: (id: string) => Promise<string | null>;
   activeConversationId: string | null;
 };
 
@@ -66,6 +74,8 @@ export function AppSidebar({
   conversations,
   onSelectConversation,
   onPrefetchConversation,
+  onRenameConversation,
+  onDeleteConversation,
   activeConversationId,
 }: AppSidebarProps) {
   const today = usage.summary?.userDaily ?? null;
@@ -138,23 +148,19 @@ export function AppSidebar({
           ) : (
             <div className="flex flex-col gap-0.5">
               {conversations.map((conversation) => (
-                <button
+                <ConversationRow
                   key={conversation.id}
-                  type="button"
-                  onClick={() => onSelectConversation(conversation.id)}
-                  onMouseEnter={() => onPrefetchConversation?.(conversation.id)}
-                  onFocus={() => onPrefetchConversation?.(conversation.id)}
-                  className={cn(
-                    "w-full truncate rounded-md px-2 py-1.5 text-left text-[13px] transition-colors duration-150",
-                    activeConversationId === conversation.id
-                      ? "bg-hover text-ink"
-                      : "text-ink-muted hover:bg-hover hover:text-ink",
-                    collapsed && "lg:justify-center lg:px-0",
-                  )}
-                  title={conversation.title || "New conversation"}
-                >
-                  {conversation.title || "New conversation"}
-                </button>
+                  id={conversation.id}
+                  title={conversation.title}
+                  active={activeConversationId === conversation.id}
+                  collapsed={collapsed}
+                  onSelect={onSelectConversation}
+                  onPrefetch={onPrefetchConversation}
+                  onRename={(title) =>
+                    onRenameConversation(conversation.id, title)
+                  }
+                  onDelete={() => onDeleteConversation(conversation.id)}
+                />
               ))}
             </div>
           )}

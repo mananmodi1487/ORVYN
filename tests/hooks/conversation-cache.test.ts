@@ -122,6 +122,34 @@ describe("conversation cache store", () => {
     assert.equal(cache.has("c1"), true, "the next load retries");
   });
 
+  it("evicts a conversation and notifies subscribers", () => {
+    const cache = new ConversationCache();
+    cache.setTurns("c1", turnList("hello"));
+    const seen: number[] = [];
+    const unsubscribe = cache.subscribe(() => {
+      seen.push(cache.getSnapshot());
+    });
+
+    cache.remove("c1");
+
+    assert.equal(cache.has("c1"), false, "a deleted conversation is evicted");
+    assert.equal(cache.getTurns("c1"), undefined);
+    assert.equal(seen.length, 1, "an eviction must notify subscribers");
+
+    unsubscribe();
+  });
+
+  it("treats evicting an unknown conversation as a no-op", () => {
+    const cache = new ConversationCache();
+    const first = cache.getSnapshot();
+    cache.remove("missing");
+    assert.equal(
+      cache.getSnapshot(),
+      first,
+      "no write means no new snapshot",
+    );
+  });
+
   it("exports one process-wide cache", () => {
     assert.ok(conversationCache instanceof ConversationCache);
   });

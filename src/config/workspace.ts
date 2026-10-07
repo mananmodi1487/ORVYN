@@ -98,6 +98,63 @@ export const conversationEmptyState = {
 } as const;
 
 /**
+ * The longest title a conversation may carry, whether the
+ * automatic title or a user rename set it. The rename
+ * endpoint validates against it, and the menu's invalid-title
+ * wording derives from it, so the copy and the server's
+ * validation can never disagree.
+ */
+export const MAX_CONVERSATION_TITLE_LENGTH = 120;
+
+/**
+ * Copy for a conversation's context menu — the sidebar's
+ * per-conversation actions. Failure messages map from the
+ * API's stable error codes, never from message text.
+ */
+export const conversationMenuCopy = {
+  triggerLabel: "Conversation actions",
+  rename: "Rename",
+  delete: "Delete",
+  renamePlaceholder: "Rename conversation",
+  confirmDeleteTitle: "Delete this conversation?",
+  confirmDeleteDescription:
+    "Its messages are deleted with it. This cannot be undone.",
+  confirmDelete: "Delete",
+  cancel: "Cancel",
+  invalidTitle: `Titles run 1 to ${MAX_CONVERSATION_TITLE_LENGTH} characters.`,
+  unauthenticated: "Sign in to manage conversations.",
+  notFound: "The conversation no longer exists.",
+  renameFailed: "Could not rename the conversation.",
+  deleteFailed: "Could not delete the conversation.",
+  unexpected: "Something went wrong. Try again.",
+} as const;
+
+/**
+ * Maps a conversation action's failure code — the stable
+ * codes the API's error contract defines — to what the user
+ * sees. Unknown codes fall back to a plain retry message
+ * rather than echoing server prose.
+ */
+export function conversationActionErrorMessage(code: string): string {
+  switch (code) {
+    case "invalid_request":
+    case "invalid_title":
+      return conversationMenuCopy.invalidTitle;
+    case "unauthenticated":
+      return conversationMenuCopy.unauthenticated;
+    case "not_found":
+      return conversationMenuCopy.notFound;
+    case "failed_to_update":
+    case "failed_to_rename":
+      return conversationMenuCopy.renameFailed;
+    case "failed_to_delete":
+      return conversationMenuCopy.deleteFailed;
+    default:
+      return conversationMenuCopy.unexpected;
+  }
+}
+
+/**
  * Token-usage copy.
  *
  * `unavailable` is a first-class state, not a fallback: ORVYN reports what a

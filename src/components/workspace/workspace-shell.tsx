@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { defaultResponseMode, type ResponseMode } from "@/config/workspace";
+import {
+  conversationActionErrorMessage,
+  defaultResponseMode,
+  type ResponseMode,
+} from "@/config/workspace";
 import type { AuthenticatedUser } from "@/lib/auth/session";
 import { useAccountUsage, useConversation, useIsClient, useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -168,6 +172,45 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
     }
   };
 
+  /**
+   * Renames a conversation and reflects the new
+   * title in the sidebar the moment the request
+   * succeeds. The hook owns the request; the shell
+   * owns the list, so a successful rename updates
+   * the list item in place.
+   */
+  const handleRenameConversation = useCallback(
+    async (id: string, title: string): Promise<string | null> => {
+      const result = await conversation.renameConversation(id, title);
+      if (result.ok) {
+        setConversations((items) =>
+          items.map((item) => (item.id === id ? { ...item, title } : item)),
+        );
+        return null;
+      }
+      return conversationActionErrorMessage(result.error);
+    },
+    [conversation],
+  );
+
+  /**
+   * Deletes a conversation. The hook evicts its
+   * cache entry and returns the view to the empty
+   * state when the open conversation is the one
+   * deleted; the shell drops it from the list.
+   */
+  const handleDeleteConversation = useCallback(
+    async (id: string): Promise<string | null> => {
+      const result = await conversation.deleteConversation(id);
+      if (result.ok) {
+        setConversations((items) => items.filter((item) => item.id !== id));
+        return null;
+      }
+      return conversationActionErrorMessage(result.error);
+    },
+    [conversation],
+  );
+
   const handleSelectConversation = useCallback(
     async (id: string) => {
       await conversation.loadConversation(id);
@@ -275,6 +318,8 @@ export function WorkspaceShell({ user }: WorkspaceShellProps) {
           conversations={conversations}
           onSelectConversation={handleSelectConversation}
           onPrefetchConversation={conversation.prefetchConversation}
+          onRenameConversation={handleRenameConversation}
+          onDeleteConversation={handleDeleteConversation}
           activeConversationId={conversation.conversationId}
         />
       </aside>
